@@ -13,6 +13,7 @@ if [ "$#" -lt 2 ]; then
     echo -e "${ORANGE}  Actions:${NC}"
     echo -e "${ORANGE}    train:     Builds the image (if needed) and runs the training TFJob on GKE.${NC}"
     echo -e "${ORANGE}    eval-cpu:  Runs a local Docker container to evaluate a checkpoint on the CPU.${NC}"
+    echo -e "${ORANGE}    eval-tpu:  Runs a cluster based run to evaluate a checkpoint on the tpu.${NC}"
     exit 1
 fi
 
@@ -78,6 +79,42 @@ else
 fi
 
 case "$ACTION" in
+    eval-tpu)
+        echo -e "${GREEN}▶ Running action: train (config: $CONFIG)${NC}"
+
+        ## --- Authenticate & Configure ---
+        echo -e "${BLUE}🔌 Connecting to GKE cluster: ${CLUSTER_NAME}...${NC}"
+        gcloud container clusters get-credentials ${CLUSTER_NAME} ${GKE_LOCATION_FLAG} --project ${PROJECT_ID}
+        echo -e "${BLUE}🔐 Configuring Docker for ${AR_REGION}...${NC}"
+        gcloud auth configure-docker "${AR_REGION}-docker.pkg.dev"
+
+        ## --- Generate Worker Hostnames ---
+        WORKER_HOSTS=""
+        for i in {0..3}; do
+            WORKER_HOSTS+="${TFJOB_NAME}-worker-${i}.${NAMESPACE}.svc,"
+        done
+        export TPU_WORKER_HOSTNAMES=${WORKER_HOSTS%?}
+
+        ## --- Define Master Command ---
+        export MASTER_COMMAND="python ${PYTHON_SCRIPT_NAME} --checkpoint-dir ${CHECKPOINT_DIR_GCS}"
+
+        ## --- TFJob Deployment & Logging ---
+        echo -e "${BLUE}▶️  Starting process for TFJob: ${TFJOB_NAME}${NC}"
+        echo -e "${BLUE}🧹 Cleaning up any pre-existing TFJob '${TFJOB_NAME}'...${NC}"
+        kubectl delete tfjob ${TFJOB_NAME} -n ${NAMESPACE} --ignore-not-found=true --wait=false
+        sleep 5
+
+        echo -e "${BLUE}🚢 Generating and deploying TFJob from template '${YAML_FILE}'...${NC}"
+        envsubst < "${YAML_FILE}" | kubectl apply -f -
+        echo -e "${GREEN}✅ TFJob '${TFJOB_NAME}' submitted successfully.${NC}"
+
+        echo -e "${BLUE}⏳ Waiting for the MASTER pod to start running...${NC}"
+        kubectl wait --for=condition=Ready pod -l training.kubeflow.org/job-name=${TFJOB_NAME},training.kubeflow.org/replica-type=master -n ${NAMESPACE} --timeout=15m
+
+        echo -e "${BLUE}🪵 Tailing logs for the MASTER pod... Press Ctrl+C to stop viewing logs.${NC}"
+        kubectl logs -f -l training.kubeflow.org/job-name=${TFJOB_NAME},training.kubeflow.org/replica-type=master -n ${NAMESPACE}
+        ;;
+
     train)
         echo -e "${GREEN}▶ Running action: train (config: $CONFIG)${NC}"
 
