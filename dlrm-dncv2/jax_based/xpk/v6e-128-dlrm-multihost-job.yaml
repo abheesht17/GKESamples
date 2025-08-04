@@ -1,0 +1,46 @@
+# dlrm-multihost-job-test.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: dlrm-headless-svc
+spec:
+  clusterIP: None
+  selector:
+    job-name: dlrm-job-multihost
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: dlrm-job-multihost
+spec:
+  backoffLimit: 0
+  completions: 32
+  parallelism: 32
+  completionMode: Indexed
+  template:
+    spec:
+      subdomain: dlrm-headless-svc
+      restartPolicy: Never
+      nodeSelector:
+        cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
+        cloud.google.com/gke-tpu-topology: 8x16
+      containers:
+      - name: jax-test-container
+        # Using a generic Python image, as the command will install libraries
+        image: python:3.10
+        ports:
+        - containerPort: 8471
+        - containerPort: 8431
+        securityContext:
+          privileged: true
+        command:
+        - bash
+        - -c
+        - |
+          pip install -U --pre jax jaxlib libtpu-nightly requests -i https://us-python.pkg.dev/ml-oss-artifacts-published/jax/simple/ -f https://storage.googleapis.com/jax-releases/libtpu_releases.html
+          JAX_PLATFORMS=tpu,cpu ENABLE_PJRT_COMPATIBILITY=true python -c 'import jax; print("Total TPU chips:", jax.device_count())'
+        resources:
+          requests:
+            google.com/tpu: 4
+          limits:
+            google.com/tpu: 4

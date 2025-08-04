@@ -1,0 +1,131 @@
+apiVersion: kubeflow.org/v1
+kind: TFJob
+metadata:
+  name: ${TFJOB_NAME}
+spec:
+  runPolicy:
+    cleanPodPolicy: Running
+    ttlSecondsAfterFinished: 600
+  tfReplicaSpecs:
+    Master:
+      replicas: 1
+      restartPolicy: ExitCode
+      template:
+        metadata:
+          labels:
+            training.kubeflow.org/job-name: ${TFJOB_NAME}
+        spec:
+          serviceAccountName: chavoshi-dlrm-job-sa
+          nodeSelector:
+            cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
+            cloud.google.com/gke-tpu-topology: 4x4
+          tolerations:
+            - key: google.com/tpu
+              operator: Equal
+              value: present
+              effect: NoSchedule
+          affinity:
+            podAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - labelSelector:
+                    matchExpressions:
+                      - key: training.kubeflow.org/job-name
+                        operator: In
+                        values:
+                          - "${TFJOB_NAME}"
+                  topologyKey: cloud.google.com/gke-nodepool
+            podAntiAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - labelSelector:
+                    matchExpressions:
+                      - key: training.kubeflow.org/job-name
+                        operator: NotIn
+                        values:
+                          - "${TFJOB_NAME}"
+                  topologyKey: cloud.google.com/gke-nodepool
+          containers:
+          - name: tensorflow
+            image: ${IMAGE_URL}
+            imagePullPolicy: Always
+            env:
+              - name: ${TRAINING_ENV_VARS}
+                value: "true"
+              - name: TF_JOB_PACKAGE_URIS
+                value: ""
+              - name: TF_CPP_MIN_LOG_LEVEL
+                value: "0"
+              - name: TPU_STDERR_LOG_LEVEL
+                value: "0"
+              - name: TPU_MIN_LOG_LEVEL
+                value: "0"
+              - name: TPU_VLOG_LEVEL
+                value: "0"
+            command:
+              - bash
+              - -c
+              - |
+                ${MASTER_COMMAND}
+    Worker:
+      replicas: 4
+      restartPolicy: ExitCode
+      template:
+        metadata:
+          labels:
+            training.kubeflow.org/job-name: ${TFJOB_NAME}
+        spec:
+          serviceAccountName: chavoshi-dlrm-job-sa
+          nodeSelector:
+            cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
+            cloud.google.com/gke-tpu-topology: 4x4
+          tolerations:
+            - key: google.com/tpu
+              operator: Equal
+              value: present
+              effect: NoSchedule
+          affinity:
+            podAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - labelSelector:
+                    matchExpressions:
+                      - key: training.kubeflow.org/job-name
+                        operator: In
+                        values:
+                          - "${TFJOB_NAME}"
+                  topologyKey: cloud.google.com/gke-nodepool
+            podAntiAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - labelSelector:
+                    matchExpressions:
+                      - key: training.kubeflow.org/job-name
+                        operator: NotIn
+                        values:
+                          - "${TFJOB_NAME}"
+                  topologyKey: cloud.google.com/gke-nodepool
+          containers:
+          - name: tensorflow
+            command:
+              - "/usr/local/bin/tpu_tfjob_worker.sh"
+            env:
+              - name: PYTHONUNBUFFERED
+                value: "1"
+              - name: TPU_WORKER_HOSTNAMES
+                value: ${TPU_WORKER_HOSTNAMES}
+              - name: HOSTNAME
+                valueFrom:
+                  fieldRef:
+                    fieldPath: metadata.name
+              - name: TF_CPP_MIN_LOG_LEVEL
+                value: "0"
+              - name: TPU_STDERR_LOG_LEVEL
+                value: "0"
+              - name: TPU_MIN_LOG_LEVEL
+                value: "0"
+              - name: TPU_VLOG_LEVEL
+                value: "0"
+            image: ${IMAGE_URL}
+            imagePullPolicy: Always
+            resources:
+              limits:
+                google.com/tpu: "4"
+              requests:
+                google.com/tpu: "4"

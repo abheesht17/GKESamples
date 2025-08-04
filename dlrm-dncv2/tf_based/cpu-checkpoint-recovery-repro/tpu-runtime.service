@@ -1,0 +1,26 @@
+[Unit]
+Description=TPU Runtime & grpc server
+After=docker.service
+
+[Service]
+Environment="HOME=/home/tpu-runtime"
+EnvironmentFile=/home/tpu-runtime/tpu-env
+ExecStartPre=/bin/bash -c "/usr/bin/systemctl set-environment TF_DOCKER_URL=gcr.io/cloud-tpu-v2-images/grpc_tpu_worker:v6e"
+ExecStartPre=/bin/bash -c "/usr/bin/systemctl set-environment HOST_IP=$(/usr/bin/python3 /var/scripts/get-vm-metadata.py 0/ip '' network-interfaces)"
+ExecStartPre=/bin/bash -c "/usr/bin/systemctl set-environment TF_ENV_VARS=\"$(/usr/bin/python3 /var/scripts/get-vm-metadata.py tensorflow-env-vars)\""
+ExecStartPre=/bin/mkdir -p /tmp/tflogs
+ExecStartPre=/bin/chmod +r /tmp/tflogs
+ExecStartPre=/bin/chown tpu-runtime:tpu-runtime /tmp/tflogs
+ExecStartPre=/usr/bin/docker-credential-gcr configure-docker
+ExecStartPre=-/usr/bin/docker rm -f -v tpu-runtime
+ExecStartPre=/usr/bin/docker pull $TF_DOCKER_URL
+ExecStartPre=/bin/bash /var/scripts/container-restartCount.sh tpu-runtime
+ExecStart=/usr/bin/docker run -e GCS_CLIENT_CACHE_TYPE=None -e GCS_READ_CACHE_MAX_SIZE_MB=0 -e GCS_READ_CACHE_BLOCK_SIZE_MB=0 --net=host --rm --name=tpu-runtime -v /tmp:/tmp --user=2000:2000 --ulimit=memlock=68719476736 --entrypoint python3 --privileged=true $TF_ENV_VARS $TF_DOCKER_URL grpc_tpu_worker.py --tpu_hostname_override=${HOST_IP} --envelope_enabled=false
+ExecStop=/usr/bin/docker stop tpu-runtime
+ExecStopPost=/usr/bin/docker rm -v tpu-runtime
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+

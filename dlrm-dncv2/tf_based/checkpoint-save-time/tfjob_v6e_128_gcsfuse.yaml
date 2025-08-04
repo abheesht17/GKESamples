@@ -63,7 +63,7 @@ spec:
                     model:
                       num_dense_features: 13
                       bottom_mlp: [512, 256, 128]
-                      embedding_dim: 64
+                      embedding_dim: 128
                       interaction: 'multi_layer_dcn'
                       dcn_num_layers: 3
                       dcn_low_rank_dim: 512
@@ -72,7 +72,7 @@ spec:
                       use_multi_hot: true
                       concat_dense: false
                       dcn_use_bias: true
-                      vocab_sizes: [40000768,39060,17295,7424,20265,3,7122,1543,63,40000768,3067956,405282,10,2209,11938,155,4,976,14,40000768,40000768,40000768,590152,12973,108,36]
+                      vocab_sizes: [39884406,39043,17289,7420,20263,3,7120,1543,63,38532951,2953546,403346,10,2208,11938,155,4,976,14,39979771,25641295,39664984,585935,12972,108,36]
                       multi_hot_sizes: [3,2,1,2,6,1,1,1,1,7,3,8,1,6,9,5,1,1,1,12,100,27,10,3,1,1]
                       max_ids_per_chip_per_sample: 128
                       max_ids_per_table: 4096
@@ -81,9 +81,9 @@ spec:
                       size_threshold: 0
                       initialize_tables_on_host: true
                   trainer:
-                    train_steps: 10000
+                    train_steps: 1000
                     validation_interval: 1000
-                    validation_steps: 660
+                    validation_steps: 100
                     summary_interval: 1000
                     steps_per_loop: 1000
                     checkpoint_interval: 1000
