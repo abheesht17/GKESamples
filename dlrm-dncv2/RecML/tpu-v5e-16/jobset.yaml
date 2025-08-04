@@ -1,0 +1,42 @@
+apiVersion: jobset.x-k8s.io/v1alpha2
+kind: JobSet
+metadata:
+  name: jax-dlrm-benchmark-v6e-32chip
+  namespace: default
+spec:
+  replicatedJobs:
+    - name: worker
+      replicas: 8
+      template:
+        spec:
+          template:
+            spec:
+              serviceAccountName: tpu-training-sa
+              restartPolicy: Never
+              nodeSelector:
+                cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
+                cloud.google.com/gke-tpu-topology: 4x8
+              containers:
+              - name: jax-keras-dlrm
+                image: us-east5-docker.pkg.dev/chavoshi-gke-dev/tpu-repo/jax-dlrm-gke:latest
+                imagePullPolicy: "Always"
+                env:
+                - name: JAX_PLATFORMS
+                  value: "tpu"
+                - name: CUDA_VISIBLE_DEVICES
+                  value: ""
+                - name: JAX_COORDINATOR_ADDRESS
+                  value: "jax-dlrm-benchmark-v6e-32chip-worker-0-0.default.svc:12345"
+                - name: JAX_NUM_PROCESSES
+                  value: "8"
+                - name: JAX_PROCESS_ID
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.annotations['jobset.sigs.k8s.io/job-index']
+                resources:
+                  limits:
+                    google.com/tpu: 4
+                securityContext:
+                  privileged: true
+  failurePolicy:
+    maxRestarts: 0
