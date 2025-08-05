@@ -20,6 +20,7 @@ import threading
 import time
 from typing import Any, Callable, List, Mapping
 
+import tensorflow as tf
 from absl import app
 from absl import flags
 from absl import logging
@@ -119,7 +120,8 @@ _RESTORE_CHECKPOINT = flags.DEFINE_bool(
 
 def create_feature_specs(
     vocab_sizes: List[int],
-    batch_size: int,  # <-- ADD THIS ARGUMENT
+    multi_hot_sizes: List[int],  # <-- ADD THIS ARGUMENT
+    batch_size: int,
 ) -> tuple[
     Mapping[str, embedding_spec.TableSpec],
     Mapping[str, embedding_spec.FeatureSpec],
@@ -132,7 +134,13 @@ def create_feature_specs(
       continue
 
     table_name = f"{i}"
-    feature_name = f"{i}"
+    # The feature name MUST be a string of its index to match the dataloader's output
+    feature_name = str(i) 
+
+    # --- THE FIX IS HERE ---
+    # Get the correct max length for this specific feature
+    max_len = multi_hot_sizes[i]
+
     bound = jnp.sqrt(1.0 / vocab_size)
     table_spec = embedding_spec.TableSpec(
         vocabulary_size=vocab_size,
@@ -148,8 +156,8 @@ def create_feature_specs(
     )
     feature_spec = embedding_spec.FeatureSpec(
         table_spec=table_spec,
-        # --- USE THE BATCH_SIZE ARGUMENT ---
-        input_shape=(batch_size, 1),
+        # Use the correct max_len for the input shape
+        input_shape=(batch_size, max_len), 
         output_shape=(batch_size, _EMBEDDING_SIZE.value),
         name=feature_name,
     )
@@ -216,8 +224,11 @@ class DLRMDataLoader:
 
   def process_inputs(self, feature_batch):
     """Process input features into the required format."""
+    # Convert the batch of TensorFlow Tensors to NumPy arrays.
+    feature_batch = tf.nest.map_structure(lambda x: x.numpy(), feature_batch)
     dense_features = feature_batch["dense_features"]
     sparse_features = feature_batch["sparse_features"]
+
     dense_lookups = {}
     for i in range(len(VOCAB_SIZES)):
       if VOCAB_SIZES[i] <= _EMBEDDING_THRESHOLD.value:
@@ -599,7 +610,8 @@ def main(argv):
   mesh = jax.sharding.Mesh(global_devices, "x")
   global_sharding = jax.sharding.NamedSharding(mesh, pd)
 
-  _, feature_specs = create_feature_specs(VOCAB_SIZES, per_process_batch_size)
+  _, feature_specs = create_feature_specs(
+      VOCAB_SIZES, MULTI_HOT_SIZES, per_process_batch_size)
 
 
   def _get_max_ids_per_partition(name: str, batch_size: int) -> int:

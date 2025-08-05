@@ -34,9 +34,9 @@ class CriteoDataLoader:
 
         self.label_features = 'clicked'
         self.dense_features = [f'int-feature-{x}' for x in range(1, 14)]
-        self.sparse_features = [f'categorical-feature-{x}' for x in range(14, 40)]
+        # Correctly generate 26 feature names, from 0 to 25
+        self.sparse_features = [f'categorical-feature-{x}' for x in range(26)]
 
-    # --- THE FIX IS HERE: Removed the incorrect return type hint ---
     def _get_feature_spec(self):
         """Gets the feature specification for parsing a SINGLE TFRecord example."""
         feature_spec = {
@@ -48,34 +48,46 @@ class CriteoDataLoader:
             feature_spec[sparse_ft] = tf.io.VarLenFeature(dtype=tf.int64)
         return feature_spec
 
-    def _parse_example(
-        self, serialized_example: tf.Tensor
-    ) -> Dict[str, tf.Tensor]:
+    def _parse_example(self, serialized_example: tf.Tensor) -> Dict[str, tf.Tensor]:
         """Parses a single serialized TFRecord example into features."""
         feature_spec = self._get_feature_spec()
         parsed_features = tf.io.parse_single_example(serialized_example, feature_spec)
 
-        labels = parsed_features[self.label_features]
-
-        dense_features_map = {}
-        for i, dense_ft_name in enumerate(self.dense_features):
-            dense_features_map[str(i+1)] = parsed_features[dense_ft_name]
+        labels = tf.squeeze(parsed_features[self.label_features], axis=0)
+        
+        dense_features_list = [parsed_features[ft] for ft in self.dense_features]
+        dense_features_tensor = tf.concat(dense_features_list, axis=-1)
 
         sparse_features_map = {}
         for i, sparse_ft_name in enumerate(self.sparse_features):
             sparse_tensor = parsed_features[sparse_ft_name]
             dense_tensor = tf.sparse.to_dense(sparse_tensor, default_value=0)
-            reshaped_tensor = tf.reshape(dense_tensor, [-1, self._multi_hot_sizes[i]])
-            sparse_features_map[str(i)] = reshaped_tensor
+            
+            # Pad the 1D tensor to its corresponding max length
+            max_len = self._multi_hot_sizes[i]
+            # Ensure the tensor is 1D before padding
+            dense_tensor_1d = tf.reshape(dense_tensor, [-1])
+            padded_tensor = tf.pad(
+                dense_tensor_1d, 
+                paddings=[[0, max_len - tf.shape(dense_tensor_1d)[0]]], 
+                mode='CONSTANT',
+                constant_values=0
+            )
+            
+            # Ensure the final shape is statically known as 1D
+            final_tensor = tf.reshape(padded_tensor, [max_len])
+            
+            # Use the loop index 'i' as the key to match dlrm_main.py
+            sparse_features_map[str(i)] = final_tensor
 
         return {
             'clicked': labels,
-            'dense_features': dense_features_map,
+            'dense_features': dense_features_tensor,
             'sparse_features': sparse_features_map,
         }
 
     def _create_dataset(self) -> tf.data.Dataset:
-        """Creates the dataset pipeline: ListFiles -> Interleave -> Parse -> Batch -> Prefetch."""
+        """Creates the dataset pipeline."""
         files = tf.data.Dataset.list_files(self._file_pattern, shuffle=self._params.is_training)
         
         dataset = files.interleave(
