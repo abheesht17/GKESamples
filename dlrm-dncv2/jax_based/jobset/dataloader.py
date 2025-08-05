@@ -49,8 +49,8 @@ class CriteoDataLoader:
         return feature_spec
 
     def _parse_example(
-            self, serialized_example: tf.Tensor, batch_size: int
-        ) -> Dict[str, tf.Tensor]:
+        self, serialized_example: tf.Tensor
+    ) -> Dict[str, tf.Tensor]:
         """Parses a single serialized TFRecord example into features."""
         feature_spec = self._get_feature_spec()
         parsed_features = tf.io.parse_single_example(serialized_example, feature_spec)
