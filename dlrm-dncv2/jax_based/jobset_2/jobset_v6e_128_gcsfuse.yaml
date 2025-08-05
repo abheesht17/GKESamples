@@ -1,0 +1,76 @@
+apiVersion: jobset.x-k8s.io/v1alpha2
+kind: JobSet
+metadata:
+  name: ${JOB_NAME}
+  labels:
+    app.kubernetes.io/name: ${JOB_NAME}
+spec:
+  replicatedJobs:
+    - name: dlrm-job
+      replicas: 32 # 128 chips / 4 chips per worker node = 32 replicas
+      template:
+        spec:
+          backoffLimit: 0
+          template:
+            metadata:
+              annotations:
+                gke-gcsfuse/volumes: "true"
+            spec:
+              serviceAccountName: chavoshi-dlrm-job-sa
+              nodeSelector:
+                cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
+                cloud.google.com/gke-tpu-topology: 8x16
+              tolerations:
+                - key: google.com/tpu
+                  operator: Equal
+                  value: present
+                  effect: NoSchedule
+              volumes:
+                - name: gcs-fuse-volume
+                  csi:
+                    driver: gcsfuse.csi.storage.gke.io
+                    volumeAttributes:
+                      bucketName: ${GCS_BUCKET_NAME}
+                      mountOptions: "implicit-dirs"
+              containers:
+                - name: jax-dlrm
+                  image: ${JAX_IMAGE_URL}
+                  imagePullPolicy: Always
+                  command: ["python", "recml/inference/models/jax/DLRM_DCNv2/dlrm_main.py"]
+                  args:
+                    - --learning_rate=${LEARNING_RATE}
+                    - --batch_size=${BATCH_SIZE}
+                    - --embedding_size=${EMBEDDING_SIZE}
+                    - --embedding_threshold=${EMBEDDING_THRESHOLD}
+                    - --model_dir=${MODEL_DIR}
+                    - --file_pattern=${FILE_PATTERN}
+                    - --num_steps=${NUM_STEPS}
+                    - --save_checkpoint_interval=${CHECKPOINT_INTERVAL}
+                    - --restore_checkpoint=True
+                    - --eval_interval=${EVAL_INTERVAL}
+                    - --eval_file_pattern=${EVAL_FILE_PATTERN}
+                    - --eval_steps=${EVAL_STEPS}
+                    - --mode=train
+                    - --logging_interval=${LOGGING_INTERVAL}
+                  volumeMounts:
+                    - name: gcs-fuse-volume
+                      mountPath: /gcs
+                      readOnly: false
+                  env:
+                    - name: JAX_PROCESS_COUNT
+                      valueFrom:
+                        fieldRef:
+                          fieldPath: metadata.annotations['jobset.sigs.k8s.io/replicated-job-replicas']
+                    - name: JAX_PROCESS_ID
+                      valueFrom:
+                        fieldRef:
+                          fieldPath: metadata.annotations['jobset.sigs.k8s.io/job-index-in-jobset']
+                    - name: JAX_COORDINATOR_ADDRESS
+                      value: "${JOB_NAME}-dlrm-job-0.${JOB_NAME}.default.svc.cluster.local:8476"
+                  resources:
+                    limits:
+                      google.com/tpu: "4"
+                    requests:
+                      google.com/tpu: "4"
+              restartPolicy: Never
+
