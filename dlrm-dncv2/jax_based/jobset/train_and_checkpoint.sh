@@ -1,6 +1,9 @@
 #!/bin/bash
 
 set -ex
+export LIBTPU_INIT_ARGS=
+export XLA_FLAGS=
+export TPU_NAME=v6e-16-sp
 export LEARNING_RATE=0.0034
 export BATCH_SIZE=16384
 export EMBEDDING_SIZE=128
