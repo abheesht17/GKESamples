@@ -23,7 +23,7 @@ import tensorflow as tf
 
 
 dataclass = dataclasses.dataclass
-PARALLELISM = tf.data.AUTOTUNE
+PARALELLISM = 32
 
 
 @dataclass
@@ -99,6 +99,8 @@ class CriteoDataLoader:
     self._num_dense_features = num_dense_features
     self._vocab_sizes = vocab_sizes
     self._multi_hot_sizes = multi_hot_sizes
+    # Embedding threshold is used to determine whether a feature should be
+    # placed on TensorCore or SparseCore.
     self._embedding_threshold = embedding_threshold
     self._shuffle_buffer = shuffle_buffer
     self._prefetch_size = prefetch_size
@@ -276,10 +278,12 @@ class CriteoDataLoader:
       padding_ds = padding_ds.map(_mark_as_padding).repeat(200)
       dataset = dataset.concatenate(padding_ds).take(660).cache().repeat()
 
-    dataset = dataset.prefetch(self._prefetch_size)
+    # dataset = dataset.prefetch(self._prefetch_size)
+
+    dataset = dataset.prefetch(buffer_size=2048)
     options = tf.data.Options()
     options.deterministic = False
-    options.threading.private_threadpool_size = 48
+    options.threading.private_threadpool_size = 96
     dataset = dataset.with_options(options)
     return dataset
 
