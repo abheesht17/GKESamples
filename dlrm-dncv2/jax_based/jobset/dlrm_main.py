@@ -20,7 +20,6 @@ import threading
 import time
 from typing import Any, Callable, List, Mapping
 
-import tensorflow as tf
 from absl import app
 from absl import flags
 from absl import logging
@@ -120,8 +119,6 @@ _RESTORE_CHECKPOINT = flags.DEFINE_bool(
 
 def create_feature_specs(
     vocab_sizes: List[int],
-    multi_hot_sizes: List[int],  # <-- ADD THIS ARGUMENT
-    batch_size: int,
 ) -> tuple[
     Mapping[str, embedding_spec.TableSpec],
     Mapping[str, embedding_spec.FeatureSpec],
@@ -134,13 +131,7 @@ def create_feature_specs(
       continue
 
     table_name = f"{i}"
-    # The feature name MUST be a string of its index to match the dataloader's output
-    feature_name = str(i) 
-
-    # --- THE FIX IS HERE ---
-    # Get the correct max length for this specific feature
-    max_len = multi_hot_sizes[i]
-
+    feature_name = f"{i}"
     bound = jnp.sqrt(1.0 / vocab_size)
     table_spec = embedding_spec.TableSpec(
         vocabulary_size=vocab_size,
@@ -156,9 +147,8 @@ def create_feature_specs(
     )
     feature_spec = embedding_spec.FeatureSpec(
         table_spec=table_spec,
-        # Use the correct max_len for the input shape
-        input_shape=(batch_size, max_len), 
-        output_shape=(batch_size, _EMBEDDING_SIZE.value),
+        input_shape=(_BATCH_SIZE.value, 1),
+        output_shape=(_BATCH_SIZE.value, _EMBEDDING_SIZE.value),
         name=feature_name,
     )
     feature_specs[feature_name] = feature_spec
@@ -171,13 +161,14 @@ class TrainMetrics(clu_metrics.Collection):
   """Metrics for the training loop."""
   loss: metrax.Average
   accuracy: metrax.Accuracy
-
+  auc: metrax.AUCROC
 
 @flax.struct.dataclass
 class EvalMetrics(clu_metrics.Collection):
   """Metrics for the evaluation loop."""
   loss: metrax.Average
   accuracy: metrax.Accuracy
+  auc: metrax.AUCROC
 
 
 class DLRMDataLoader:
@@ -224,11 +215,8 @@ class DLRMDataLoader:
 
   def process_inputs(self, feature_batch):
     """Process input features into the required format."""
-    # Convert the batch of TensorFlow Tensors to NumPy arrays.
-    feature_batch = tf.nest.map_structure(lambda x: x.numpy(), feature_batch)
     dense_features = feature_batch["dense_features"]
     sparse_features = feature_batch["sparse_features"]
-
     dense_lookups = {}
     for i in range(len(VOCAB_SIZES)):
       if VOCAB_SIZES[i] <= _EMBEDDING_THRESHOLD.value:
@@ -248,7 +236,7 @@ class DLRMDataLoader:
         self.feature_specs,
         self.mesh.local_mesh.size,
         self.mesh.size,
-        num_sc_per_device=1,
+        num_sc_per_device=4,
         sharding_strategy="MOD",
         allow_id_dropping=_ALLOW_ID_DROPPING.value,
     )[0]
@@ -329,16 +317,20 @@ def eval_loop(
     if max_steps > 0 and step_count >= max_steps:
       info("Reached max evaluation steps (%d).", max_steps)
       break
-
+  
   info("Finished evaluation after %d steps.", step_count)
   metrics_on_host = jax.device_get(eval_metrics_collection)
   loss_val = metrics_on_host.loss.compute()
   accuracy_val = metrics_on_host.accuracy.compute()
-
+  try:
+    auc_val = metrics_on_host.auc.compute()
+  except (ValueError, ZeroDivisionError):
+    auc_val = 0.5
   info(
-      "Evaluation results: loss=%.5f, accuracy=%.5f",
+      "Evaluation results: loss=%.5f, accuracy=%.5f, auc=%.5f",
       loss_val,
       accuracy_val,
+      auc_val,
   )
 
 
@@ -359,6 +351,7 @@ def eval_step(
   metric_updates = EvalMetrics.empty().replace(
       loss=metrax.Average.from_model_output(values=loss),
       accuracy=metrax.Accuracy.from_model_output(binarized_preds, labels),
+      auc=metrax.AUCROC.from_model_output(preds, labels),
   )
   return metrics_collection.merge(metric_updates)
 
@@ -370,11 +363,9 @@ def train_loop(
     global_sharding=None,
 ):
   """Main training and evaluation loop."""
-  per_process_batch_size = _BATCH_SIZE.value // jax.process_count()
-
   producer = DLRMDataLoader(
       file_pattern=_FILE_PATTERN.value,
-      batch_size=per_process_batch_size,
+      batch_size=_BATCH_SIZE.value,
       is_training=True,
       num_workers=16,
       buffer_size=256,
@@ -391,7 +382,7 @@ def train_loop(
       params, optax.adagrad(learning_rate=_LEARNING_RATE.value)
   )
   opt_state = tx.init(params)
-
+  
   checkpoint_dir = os.path.join(_MODEL_DIR.value, "checkpoints")
   checkpointer = ocp.CheckpointManager(checkpoint_dir)
 
@@ -437,6 +428,7 @@ def train_loop(
     metric_updates = TrainMetrics.empty().replace(
         loss=metrax.Average.from_model_output(values=loss_val),
         accuracy=metrax.Accuracy.from_model_output(binarized_preds, labels),
+        auc=metrax.AUCROC.from_model_output(preds, labels),
     )
     metrics_collection = metrics_collection.merge(metric_updates)
     updates, new_opt_state = tx.update(grads, opt_state)
@@ -444,7 +436,6 @@ def train_loop(
     return new_params, new_opt_state, metrics_collection
 
   start_time = time.time()
-  overall_start_time = time.time()
   train_metrics_collection = TrainMetrics.empty()
   for step in range(initial_step, _NUM_STEPS.value):
     with jax.profiler.StepTraceAnnotation("train_step", step_num=step):
@@ -458,13 +449,16 @@ def train_loop(
     if current_step % _LOGGING_INTERVAL.value == 0:
       end_time = time.time()
       metrics_on_host = jax.device_get(train_metrics_collection)
-      elapsed_time = end_time - start_time
-      throughput = _BATCH_SIZE.value * _LOGGING_INTERVAL.value / elapsed_time
-
+      try:
+        with jax.default_device(jax.devices("cpu")[0]):
+          auc_val = metrics_on_host.auc.compute()
+      except (ValueError, ZeroDivisionError):
+        auc_val = 0.5
       info(
-          "Step %d: loss=%.5f, accuracy=%.5f, throughput=%.2f examples/sec",
+          "Step %d: loss=%.5f, accuracy=%.5f, auc=%.5f, step_time=%.2fms",
           current_step, metrics_on_host.loss.compute(),
-          metrics_on_host.accuracy.compute(), throughput
+          metrics_on_host.accuracy.compute(), auc_val,
+          (end_time - start_time) * 1000 / _LOGGING_INTERVAL.value
       )
       train_metrics_collection = TrainMetrics.empty()
       start_time = time.time()
@@ -499,17 +493,6 @@ def train_loop(
           current_step, args=ocp.args.PyTreeSave(ckpt_to_save), force=True
       )
 
-  overall_end_time = time.time()
-  total_training_time = overall_end_time - overall_start_time
-  total_steps_trained = _NUM_STEPS.value - initial_step
-  total_examples_processed = total_steps_trained * _BATCH_SIZE.value
-  overall_throughput = total_examples_processed / total_training_time
-  info(
-      "Finished training %d steps in %.2f seconds.",
-      total_steps_trained, total_training_time
-  )
-  info("Overall training throughput: %.2f examples/sec", overall_throughput)
-
   producer.stop()
   checkpointer.wait_until_finished()
   checkpointer.close()
@@ -525,9 +508,6 @@ def run_evaluation_only(
   if not _EVAL_FILE_PATTERN.value:
     raise ValueError("--eval_file_pattern must be set in 'eval' mode.")
 
-  # Calculate the per-process batch size
-  per_process_batch_size = _BATCH_SIZE.value // jax.process_count()
-
   checkpoint_dir = os.path.join(_MODEL_DIR.value, "checkpoints")
   checkpointer = ocp.CheckpointManager(checkpoint_dir)
   latest_step = checkpointer.latest_step()
@@ -541,7 +521,7 @@ def run_evaluation_only(
 
   dummy_producer = DLRMDataLoader(
       file_pattern=_EVAL_FILE_PATTERN.value,
-      batch_size=per_process_batch_size,
+      batch_size=_BATCH_SIZE.value,
       is_training=False,
       num_workers=1,
       feature_specs=feature_specs,
@@ -578,7 +558,7 @@ def run_evaluation_only(
 
   eval_producer = DLRMDataLoader(
       file_pattern=_EVAL_FILE_PATTERN.value,
-      batch_size=per_process_batch_size,
+      batch_size=_BATCH_SIZE.value,
       is_training=False,
       num_workers=16,
       buffer_size=128,
@@ -603,16 +583,7 @@ def main(argv):
   mesh = jax.sharding.Mesh(global_devices, "x")
   global_sharding = jax.sharding.NamedSharding(mesh, pd)
 
-  per_process_batch_size = _BATCH_SIZE.value // jax.process_count()
-
-  pd = P("x")
-  global_devices = jax.devices()
-  mesh = jax.sharding.Mesh(global_devices, "x")
-  global_sharding = jax.sharding.NamedSharding(mesh, pd)
-
-  _, feature_specs = create_feature_specs(
-      VOCAB_SIZES, MULTI_HOT_SIZES, per_process_batch_size)
-
+  _, feature_specs = create_feature_specs(VOCAB_SIZES)
 
   def _get_max_ids_per_partition(name: str, batch_size: int) -> int:
     return 4096
@@ -625,12 +596,12 @@ def main(argv):
       global_device_count=jax.device_count(),
       stack_to_max_ids_per_partition=_get_max_ids_per_partition,
       stack_to_max_unique_ids_per_partition=_get_max_unique_ids_per_partition,
-      num_sc_per_device=1,
+      num_sc_per_device=4,
   )
   embedding.prepare_feature_specs_for_training(
       feature_specs,
       global_device_count=jax.device_count(),
-      num_sc_per_device=1,
+      num_sc_per_device=4,
   )
 
   model = DLRMDCNV2(
