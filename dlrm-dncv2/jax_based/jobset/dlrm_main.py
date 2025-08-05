@@ -224,7 +224,7 @@ class DLRMDataLoader:
 
     labels = feature_batch["clicked"]
 
-    feature_weights = jax.tree.map(
+    feature_weights = jax.tree_util.tree_map(
         lambda x: np.array(np.ones_like(x, shape=x.shape, dtype=np.float32)),
         sparse_features,
     )
