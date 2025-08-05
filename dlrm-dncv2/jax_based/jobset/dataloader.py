@@ -48,31 +48,31 @@ class CriteoDataLoader:
             feature_spec[sparse_ft] = tf.io.VarLenFeature(dtype=tf.int64)
         return feature_spec
 
-def _parse_example(
-    self, serialized_example: tf.Tensor, batch_size: int
-) -> Dict[str, tf.Tensor]:
-  """Parses a single serialized TFRecord example into features."""
-  feature_spec = self._get_feature_spec()
-  parsed_features = tf.io.parse_single_example(serialized_example, feature_spec)
+    def _parse_example(
+            self, serialized_example: tf.Tensor, batch_size: int
+        ) -> Dict[str, tf.Tensor]:
+        """Parses a single serialized TFRecord example into features."""
+        feature_spec = self._get_feature_spec()
+        parsed_features = tf.io.parse_single_example(serialized_example, feature_spec)
 
-  labels = parsed_features[self.label_features]
+        labels = parsed_features[self.label_features]
 
-  dense_features_map = {}
-  for i, dense_ft_name in enumerate(self.dense_features):
-      dense_features_map[str(i+1)] = parsed_features[dense_ft_name]
+        dense_features_map = {}
+        for i, dense_ft_name in enumerate(self.dense_features):
+            dense_features_map[str(i+1)] = parsed_features[dense_ft_name]
 
-  sparse_features_map = {}
-  for i, sparse_ft_name in enumerate(self.sparse_features):
-    sparse_tensor = parsed_features[sparse_ft_name]
-    dense_tensor = tf.sparse.to_dense(sparse_tensor, default_value=0)
-    reshaped_tensor = tf.reshape(dense_tensor, [-1, self._multi_hot_sizes[i]])
-    sparse_features_map[str(i)] = reshaped_tensor
+        sparse_features_map = {}
+        for i, sparse_ft_name in enumerate(self.sparse_features):
+            sparse_tensor = parsed_features[sparse_ft_name]
+            dense_tensor = tf.sparse.to_dense(sparse_tensor, default_value=0)
+            reshaped_tensor = tf.reshape(dense_tensor, [-1, self._multi_hot_sizes[i]])
+            sparse_features_map[str(i)] = reshaped_tensor
 
-  return {
-      'clicked': labels,
-      'dense_features': dense_features_map,
-      'sparse_features': sparse_features_map,
-  }
+        return {
+            'clicked': labels,
+            'dense_features': dense_features_map,
+            'sparse_features': sparse_features_map,
+        }
 
     def _create_dataset(self) -> tf.data.Dataset:
         """Creates the dataset pipeline: ListFiles -> Interleave -> Parse -> Batch -> Prefetch."""
