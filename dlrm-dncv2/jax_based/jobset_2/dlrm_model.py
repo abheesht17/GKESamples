@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """DLRM DCN v2 model."""
 
 from typing import List
@@ -21,6 +22,7 @@ import jax.numpy as jnp
 from jax_tpu_embedding.sparsecore.lib.flax import embed
 from jax_tpu_embedding.sparsecore.lib.nn import embedding
 from jax_tpu_embedding.sparsecore.lib.nn import embedding_spec
+import numpy as np
 
 
 shard_map = jax.experimental.shard_map.shard_map
@@ -45,7 +47,6 @@ class DLRMDCNV2(nn.Module):
   mesh: jax.sharding.Mesh
   sharding_axis: str
   global_batch_size: int
-  vocab_sizes: List[int]
   embedding_size: int
   bottom_mlp_dims: List[int]
   top_mlp_dims = [1024, 1024, 512, 256, 1]
@@ -55,7 +56,7 @@ class DLRMDCNV2(nn.Module):
   def bottom_mlp(self, x):
     for dim in self.bottom_mlp_dims:
       previous_dim = x.shape[-1]
-      bound = jnp.sqrt(1.0 / previous_dim)
+      bound = np.sqrt(1.0 / previous_dim)
       x = nn.Dense(
           dim,
           kernel_init=uniform_init(bound),
@@ -67,7 +68,7 @@ class DLRMDCNV2(nn.Module):
   def top_mlp(self, x):
     previous_dim = x.shape[-1]
     for dim in self.top_mlp_dims[:-1]:
-      bound = jnp.sqrt(1.0 / previous_dim)
+      bound = np.sqrt(1.0 / previous_dim)
       x = nn.Dense(
           dim,
           kernel_init=uniform_init(bound),
@@ -76,7 +77,7 @@ class DLRMDCNV2(nn.Module):
       x = nn.relu(x)
       previous_dim = dim
 
-    bound = jnp.sqrt(1.0 / previous_dim)
+    bound = np.sqrt(1.0 / previous_dim)
     x = nn.Dense(
         self.top_mlp_dims[-1],
         kernel_init=uniform_init(bound),
@@ -112,27 +113,9 @@ class DLRMDCNV2(nn.Module):
 
   @nn.compact
   def __call__(
-      self, dense_features, dense_lookups, embedding_lookups
+      self, dense_features, embedding_lookups
   ):
     dense_outputs = self.bottom_mlp(dense_features)
-    dense_embeddings = []
-    processed_dense_lookups = []
-    for key, value in dense_lookups.items():
-        embeddings = nn.Embed(self.vocab_sizes[int(key)], self.embedding_size)(value)
-        embeddings = jnp.sum(embeddings, axis=-2)
-        processed_dense_lookups.append(embeddings)
-
-    if processed_dense_lookups:
-        # Stack along axis 1 to get (global_batch_size, num_dense_lookups, embedding_size)
-        stacked_dense_embeddings = jnp.stack(processed_dense_lookups, axis=1)
-    else:
-        # Handle empty list if no dense_lookups are provided
-        stacked_dense_embeddings = jnp.empty((self.global_batch_size, 0, self.embedding_size))
-
-    #dense_embeddings = jnp.concatenate(dense_embeddings, axis=-2)
-    dense_embeddings = stacked_dense_embeddings
-    #jax.debug.print("[chandra-debug] dense_embeddings shape: {}", dense_embeddings.shape)
-
     sparse_embeddings = embed.SparseCoreEmbed(
         feature_specs=self.feature_specs,
         mesh=self.mesh,
@@ -147,16 +130,9 @@ class DLRMDCNV2(nn.Module):
             dense_outputs.reshape(
                 (self.global_batch_size, 1, self.embedding_size)
             ),
-            concatenated_embeddings.reshape((
-                self.global_batch_size,
-                26 - len(dense_lookups),
-                self.embedding_size,
-            )),
-            dense_embeddings.reshape((
-                self.global_batch_size,
-                len(dense_lookups.keys()),
-                self.embedding_size,
-            )),
+            concatenated_embeddings.reshape(
+                (self.global_batch_size, 26, self.embedding_size)
+            ),
         ],
         dimension=1,
     )
@@ -166,4 +142,3 @@ class DLRMDCNV2(nn.Module):
     predictions = jnp.reshape(predictions, (-1,))
 
     return predictions
-

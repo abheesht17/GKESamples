@@ -11,42 +11,37 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """DLRM DCN v2 model training and evaluation."""
 
 import collections
 import functools
-import os
 import threading
 import time
-from typing import Any, Callable, List, Mapping
+from typing import Any, List, Mapping
 
-import tensorflow as tf
 from absl import app
 from absl import flags
 from absl import logging
-from clu import metrics as clu_metrics
+import jax
+from jax.experimental.layout import Format
+from jax.experimental.layout import Layout as DLL
+import jax.numpy as jnp
+from jax.sharding import NamedSharding
+from jax.sharding import PartitionSpec as P
 from dataloader import CriteoDataLoader
 from dataloader import DataConfig
 from dlrm_model import DLRMDCNV2
 from dlrm_model import uniform_init
-import flax
-import jax
-import jax.numpy as jnp
 import jax.profiler
-from jax.sharding import NamedSharding
-from jax.sharding import PartitionSpec as P
 from jax_tpu_embedding.sparsecore.lib.flax import embed
 from jax_tpu_embedding.sparsecore.lib.flax import embed_optimizer
 from jax_tpu_embedding.sparsecore.lib.nn import embedding
 from jax_tpu_embedding.sparsecore.lib.nn import embedding_spec
-import metrax
 import numpy as np
 import optax
-import orbax.checkpoint as ocp
 
 
-jax.distributed.initialize()
-jax.profiler.start_server(9999)
 partial = functools.partial
 info = logging.info
 shard_map = jax.experimental.shard_map.shard_map
@@ -54,74 +49,175 @@ Nested = embedding.Nested
 
 FLAGS = flags.FLAGS
 
-# --- Data and Model Flags ---
 VOCAB_SIZES = [
-    40000000, 39060, 17295, 7424, 20265, 3, 7122, 1543, 63, 40000000,
-    3067956, 405282, 10, 2209, 11938, 155, 4, 976, 14, 40000000, 40000000,
-    40000000, 590152, 12973, 108, 36
+    40000000,
+    39060,
+    17295,
+    7424,
+    20265,
+    3,
+    7122,
+    1543,
+    63,
+    40000000,
+    3067956,
+    405282,
+    10,
+    2209,
+    11938,
+    155,
+    4,
+    976,
+    14,
+    40000000,
+    40000000,
+    40000000,
+    590152,
+    12973,
+    108,
+    36,
 ]
 MULTI_HOT_SIZES = [
-    3, 2, 1, 2, 6, 1, 1, 1, 1, 7, 3, 8, 1, 6, 9, 5, 1, 1, 1, 12, 100, 27, 10,
-    3, 1, 1
+    3,
+    2,
+    1,
+    2,
+    6,
+    1,
+    1,
+    1,
+    1,
+    7,
+    3,
+    8,
+    1,
+    6,
+    9,
+    5,
+    1,
+    1,
+    1,
+    12,
+    100,
+    27,
+    10,
+    3,
+    1,
+    1,
 ]
+
+np.set_printoptions(threshold=np.inf)
+
+_BATCH_SIZE = flags.DEFINE_integer("batch_size", 135168, "Batch size.")
+
+# MLPerf official dataset:
+# "/cns/ig-d/home/tpu-perf-team/chandrasekhard/criteo/terabyte_processed_golden_shuffled/final/train-*tfrecord"
+_FILE_PATTERN = flags.DEFINE_string(
+    "file_pattern",
+    None,
+    "File pattern for the training data.",
+)
+
+_LEARNING_RATE = flags.DEFINE_float("learning_rate", 0.01, "Learning rate.")
+
 _NUM_DENSE_FEATURES = flags.DEFINE_integer(
     "num_dense_features", 13, "Number of dense features."
 )
-_EMBEDDING_SIZE = flags.DEFINE_integer("embedding_size", 16, "Embedding size.")
-_EMBEDDING_THRESHOLD = flags.DEFINE_integer(
-    "embedding_threshold", 21000,
-    "Threshold for placing features on TensorCore or SparseCore."
-)
 
-# --- Mode Flag ---
-_MODE = flags.DEFINE_enum(
-    "mode", "train", ["train", "eval"],
-    "Mode to run: 'train' for training, 'eval' for evaluation-only."
-)
-
-# --- Training Flags ---
-_BATCH_SIZE = flags.DEFINE_integer("batch_size", 8192, "Batch size.")
-_FILE_PATTERN = flags.DEFINE_string(
-    "file_pattern", None, "File pattern for the training data."
-)
-_LEARNING_RATE = flags.DEFINE_float("learning_rate", 0.0034, "Learning rate.")
 _NUM_STEPS = flags.DEFINE_integer(
     "num_steps", 28000, "Number of steps to train for."
 )
-_LOGGING_INTERVAL = flags.DEFINE_integer(
-    "logging_interval", 6000, "Frequency of logging training metrics."
+
+_NUM_EPOCHS = flags.DEFINE_integer(
+    "num_epochs",
+    1,
+    "Number of separate epochs.",
 )
+
+_EMBEDDING_SIZE = flags.DEFINE_integer("embedding_size", 128, "Embedding size.")
+
 _ALLOW_ID_DROPPING = flags.DEFINE_bool(
-    "allow_id_dropping", True, "Allow dropping ids during embedding lookup."
+    "allow_id_dropping",
+    False,
+    "If set, allow dropping ids during embedding lookup.",
 )
 
-# --- Evaluation Flags ---
-_EVAL_FILE_PATTERN = flags.DEFINE_string(
-    "eval_file_pattern", None, "File pattern for the evaluation data."
-)
-_EVAL_INTERVAL = flags.DEFINE_integer(
-    "eval_interval", 5000, "Run evaluation every N steps."
-)
-_EVAL_STEPS = flags.DEFINE_integer(
-    "eval_steps", 0, "Number of steps for each eval. 0 for all."
+_EMBEDDING_THRESHOLD = flags.DEFINE_integer(
+    "embedding_threshold",
+    0,
+    "Embedding threshold for placing features on TensorCore or SparseCore.",
 )
 
-# --- Checkpointing and Misc Flags ---
+_EXPERIMENT_NAME = flags.DEFINE_string(
+    "experiment_name",
+    "jax_dlrm",
+    "The name of the experiment. If not set the name of the fixture that"
+    " returns the fiddle configuration will be used instead.",
+)
 _MODEL_DIR = flags.DEFINE_string(
-    "model_dir", "/tmp/dlrm_jax", "Model working directory."
+    "model_dir",
+    "/cns/{cell}-d/home/tpu-perf-team/{username}/{exp_name}/{xid}",
+    "Model working directory.",
 )
-_SAVE_CHECKPOINT_INTERVAL = flags.DEFINE_integer(
-    "save_checkpoint_interval", 5000, "Frequency of saving checkpoints."
+
+_MODE = flags.DEFINE_enum(
+    "mode",
+    default=None,
+    enum_values=[
+        "train",
+        "eval",
+        "train_and_eval",
+        "continuous_eval",
+    ],
+    help="Mode to run: `train`, `eval`, `train_and_eval`, `continuous_eval`.",
 )
-_RESTORE_CHECKPOINT = flags.DEFINE_bool(
-    "restore_checkpoint", False, "Restore from the latest checkpoint."
+
+_BINARY_PATH = flags.DEFINE_string("binary_path", None, "Path to train binary.")
+
+_PRIORITY = flags.DEFINE_integer(
+    "priority", 200, "Priority for the training job."
+)
+_BORG_USER = flags.DEFINE_string("borg_user", None, "Borg user.")
+_CELL = flags.DEFINE_string("cell", "yo", "Borg cell.")
+_LOGS_ACCESS = flags.DEFINE_multi_string(
+    "logs_access",
+    [],
+    "List of roles that can read the logs of the training job.",
+)
+
+_TRAIN_PKG_NAME = flags.DEFINE_string(
+    "train_pkg_name",
+    None,
+    "MPM package name of the train binary. Must be passed with"
+    " `train_pkg_binary` and `train_version`.",
+)
+_TRAIN_PKG_BINARY = flags.DEFINE_string(
+    "train_pkg_binary",
+    None,
+    "Binary path of the train binary within the MPM. Must be passed with"
+    " `train_pkg_name` and `train_version`.",
+)
+_TRAINER_VERSION = flags.DEFINE_string(
+    "train_version",
+    None,
+    "Version of the train binary MPM. Must be passed with `train_pkg_name` and"
+    " `train_pkg_binary`.",
+)
+
+_VIZIER_STUDY_CONFIG = flags.DEFINE_string(
+    "vizier_study_config",
+    None,
+    "Path to a `vizier_pb2.StudyConfig` text proto. Must be set to use Vizier.",
+)
+_VIZIER_NUM_PARALLEL_RUNS = flags.DEFINE_integer(
+    "vizier_num_parallel_runs",
+    2,
+    "Number of parallel trials to run with Vizier.",
 )
 
 
 def create_feature_specs(
     vocab_sizes: List[int],
-    multi_hot_sizes: List[int],  # <-- ADD THIS ARGUMENT
-    batch_size: int,
 ) -> tuple[
     Mapping[str, embedding_spec.TableSpec],
     Mapping[str, embedding_spec.FeatureSpec],
@@ -130,25 +226,14 @@ def create_feature_specs(
   table_specs = {}
   feature_specs = {}
   for i, vocab_size in enumerate(vocab_sizes):
-    if vocab_size <= _EMBEDDING_THRESHOLD.value:
-      continue
-
     table_name = f"{i}"
-    # The feature name MUST be a string of its index to match the dataloader's output
-    feature_name = str(i) 
-
-    # --- THE FIX IS HERE ---
-    # Get the correct max length for this specific feature
-    max_len = multi_hot_sizes[i]
-
-    bound = jnp.sqrt(1.0 / vocab_size)
+    feature_name = f"{i}"
+    bound = np.sqrt(1.0 / vocab_size)
     table_spec = embedding_spec.TableSpec(
         vocabulary_size=vocab_size,
         embedding_dim=_EMBEDDING_SIZE.value,
         initializer=uniform_init(bound),
-        optimizer=embedding_spec.AdagradOptimizerSpec(
-            learning_rate=_LEARNING_RATE.value
-        ),
+        optimizer=embedding_spec.AdagradOptimizerSpec(learning_rate=0.01),
         combiner="sum",
         name=table_name,
         max_ids_per_partition=2048,
@@ -156,9 +241,11 @@ def create_feature_specs(
     )
     feature_spec = embedding_spec.FeatureSpec(
         table_spec=table_spec,
-        # Use the correct max_len for the input shape
-        input_shape=(batch_size, max_len), 
-        output_shape=(batch_size, _EMBEDDING_SIZE.value),
+        input_shape=(_BATCH_SIZE.value, 1),
+        output_shape=(
+            _BATCH_SIZE.value,
+            _EMBEDDING_SIZE.value,
+        ),
         name=feature_name,
     )
     feature_specs[feature_name] = feature_spec
@@ -166,39 +253,35 @@ def create_feature_specs(
   return table_specs, feature_specs
 
 
-@flax.struct.dataclass
-class TrainMetrics(clu_metrics.Collection):
-  """Metrics for the training loop."""
-  loss: metrax.Average
-  accuracy: metrax.Accuracy
-
-
-@flax.struct.dataclass
-class EvalMetrics(clu_metrics.Collection):
-  """Metrics for the evaluation loop."""
-  loss: metrax.Average
-  accuracy: metrax.Accuracy
-
-
 class DLRMDataLoader:
   """Parallel data producer for the DLRM model."""
 
   def __init__(
       self,
-      file_pattern: str,
+      file_pattern: str | None,
       batch_size,
-      is_training: bool,
       num_workers=4,
       buffer_size=128,
       feature_specs=None,
       mesh=None,
       global_sharding=None,
   ):
-    """Initialize the producer."""
+    """Initialize the producer.
+
+    Args:
+        file_pattern: File pattern for the training data.
+        batch_size: The size of each batch.
+        num_workers: Number of threads generating batches.
+        buffer_size: Maximum number of batches to store in the buffer.
+        feature_specs: Specifications for features.
+        mesh: Mesh configuration for distributed processing.
+        global_sharding: Global sharding configuration.
+    """
+    # Here we pass global batch size. TF.data will shard it.
     self.data_config = DataConfig(
         global_batch_size=batch_size,
-        is_training=is_training,
-        use_cached_data=file_pattern is None,
+        is_training=True,
+        use_cached_data=True if file_pattern is None else False,
     )
     self._dataloader = CriteoDataLoader(
         file_pattern=file_pattern,
@@ -209,6 +292,7 @@ class DLRMDataLoader:
         embedding_threshold=_EMBEDDING_THRESHOLD.value,
     )
     self._iterator = self._dataloader.get_iterator()
+    self.batch_size = batch_size
     self.feature_specs = feature_specs
     self.mesh = mesh
     self.global_sharding = global_sharding
@@ -222,27 +306,21 @@ class DLRMDataLoader:
       worker.start()
       self._workers.append(worker)
 
-  def process_inputs(self, feature_batch):
+  def process_inputs(self, batch_number, feature_batch):
     """Process input features into the required format."""
-    # Convert the batch of TensorFlow Tensors to NumPy arrays.
-    feature_batch = tf.nest.map_structure(lambda x: x.numpy(), feature_batch)
     dense_features = feature_batch["dense_features"]
     sparse_features = feature_batch["sparse_features"]
-
-    dense_lookups = {}
-    for i in range(len(VOCAB_SIZES)):
-      if VOCAB_SIZES[i] <= _EMBEDDING_THRESHOLD.value:
-        dense_lookups[str(i)] = sparse_features[str(i)]
-        sparse_features.pop(str(i))
-
     labels = feature_batch["clicked"]
 
     feature_weights = jax.tree_util.tree_map(
-        lambda x: np.array(np.ones_like(x, shape=x.shape, dtype=np.float32)),
-        sparse_features,
+        lambda x: np.array(
+            np.ones_like(x, shape=x.shape, dtype=np.float32)
+        ),
+        sparse_features
     )
 
-    processed_sparse = embedding.preprocess_sparse_dense_matmul_input(
+    # Process sparse features
+    processed_sparse, _ = embedding.preprocess_sparse_dense_matmul_input(
         sparse_features,
         feature_weights,
         self.feature_specs,
@@ -251,7 +329,11 @@ class DLRMDataLoader:
         num_sc_per_device=4,
         sharding_strategy="MOD",
         allow_id_dropping=_ALLOW_ID_DROPPING.value,
-    )[0]
+        batch_number=batch_number,
+    )
+
+    # Preprocess the inputs and build JAX global views of the data.
+    # Global view is required for embedding lookup.
     make_global_view = lambda x: jax.tree.map(
         lambda y: jax.make_array_from_process_local_data(
             self.global_sharding, y
@@ -260,29 +342,30 @@ class DLRMDataLoader:
     )
     labels = make_global_view(labels)
     dense_features = make_global_view(dense_features)
-    dense_lookups = make_global_view(dense_lookups)
     processed_sparse = map(make_global_view, processed_sparse)
-    processed_sparse = embedding.SparseDenseMatmulInput(
-        *processed_sparse
-    )
-    return [labels, dense_features, dense_lookups, processed_sparse]
+    return [
+        labels,
+        dense_features,
+        embed.EmbeddingLookupInput(*processed_sparse),
+    ]
 
   def _worker_loop(self):
     """Worker thread that continuously generates and processes batches."""
+    # SparseCore preprocessing requires a unique batch counter for mini-batching
+    # collectives. It does not need to be the same as the step counter and can
+    # reset for each loop or on restart.
+    batch_number = 0
     while True:
-      try:
-        # This will fail if the main thread deletes _iterator.
-        batch = next(self._iterator)
-        processed_batch = self.process_inputs(batch)
-        with self._sync:
-          self._sync.wait_for(lambda: len(self.buffer) < self.buffer.maxlen)
-          self.buffer.append(processed_batch)
-          self._sync.notify_all()
-      except (StopIteration, AttributeError): # Catch error if iterator is gone
-        with self._sync:
-          self.buffer.append(None)
-          self._sync.notify_all()
-        return
+      batch = next(self._iterator)
+      processed_batch = self.process_inputs(batch_number, batch)
+      # processed_batch = jax.device_put(processed_batch, self.global_sharding)
+
+      with self._sync:
+        self._sync.wait_for(
+            lambda: len(self.buffer) < self.buffer.maxlen
+        )
+        self.buffer.append(processed_batch)
+        self._sync.notify_all()
 
   def __iter__(self):
     return self
@@ -293,333 +376,60 @@ class DLRMDataLoader:
       self._sync.wait_for(lambda: self.buffer)
       item = self.buffer.popleft()
       self._sync.notify_all()
-      if item is None:
-        raise StopIteration
       return item
 
   def stop(self):
     """Stop all worker threads and clear the buffer."""
-    if hasattr(self, '_iterator'):
-      del self._iterator
+    for worker in self._workers:
+      worker.join(timeout=5)
+
+    with self._sync:
+      self.buffer.clear()
+      self._sync.notify_all()
+
+    del self._iterator
 
 
-def eval_loop(
-    eval_producer: DLRMDataLoader,
-    eval_step_fn: Callable,
-    params: Any,
-    apply_fn: Callable,
-    max_steps: int = 0,
-):
-  """Runs the evaluation loop."""
-  info("Starting evaluation...")
-  eval_metrics_collection = EvalMetrics.empty()
-  step_count = 0
-  for batch in eval_producer:
-    labels, dense_features, dense_lookups, embedding_lookups = batch
-    eval_metrics_collection = eval_step_fn(
-        apply_fn,
-        params,
-        labels,
-        dense_features,
-        dense_lookups,
-        embedding_lookups,
-        eval_metrics_collection,
-    )
-    step_count += 1
-    if max_steps > 0 and step_count >= max_steps:
-      info("Reached max evaluation steps (%d).", max_steps)
-      break
+def test_dlrm_dcnv2_model():
+  """Test DLRM DCN v2 model."""
 
-  info("Finished evaluation after %d steps.", step_count)
-  metrics_on_host = jax.device_get(eval_metrics_collection)
-  loss_val = metrics_on_host.loss.compute()
-  accuracy_val = metrics_on_host.accuracy.compute()
-
-  info(
-      "Evaluation results: loss=%.5f, accuracy=%.5f",
-      loss_val,
-      accuracy_val,
-  )
-
-
-@partial(jax.jit, static_argnums=0)
-def eval_step(
-    apply_fn: Callable,
-    params: Any,
-    labels: jax.Array,
-    dense_features: jax.Array,
-    dense_lookups: Any,
-    embedding_lookups: embed.EmbeddingLookupInput,
-    metrics_collection,
-):
-  logits = apply_fn(params, dense_features, dense_lookups, embedding_lookups)
-  loss = jnp.mean(optax.sigmoid_binary_cross_entropy(logits, labels))
-  preds = jax.nn.sigmoid(logits)
-  binarized_preds = (preds > 0.5).astype(jnp.int32)
-  metric_updates = EvalMetrics.empty().replace(
-      loss=metrax.Average.from_model_output(values=loss),
-      accuracy=metrax.Accuracy.from_model_output(binarized_preds, labels),
-  )
-  return metrics_collection.merge(metric_updates)
-
-
-def train_loop(
-    model: DLRMDCNV2,
-    feature_specs: Mapping[str, embedding_spec.FeatureSpec],
-    mesh: jax.sharding.Mesh,
-    global_sharding=None,
-):
-  """Main training and evaluation loop."""
-  per_process_batch_size = _BATCH_SIZE.value // jax.process_count()
-
-  producer = DLRMDataLoader(
-      file_pattern=_FILE_PATTERN.value,
-      batch_size=per_process_batch_size,
-      is_training=True,
-      num_workers=16,
-      buffer_size=256,
-      feature_specs=feature_specs,
-      mesh=mesh,
-      global_sharding=global_sharding
-  )
-
-  _, dense_features, dense_lookups, embedding_lookups = next(producer)
-  params = model.init(
-      jax.random.key(42), dense_features, dense_lookups, embedding_lookups
-  )
-  tx = embed_optimizer.create_optimizer_for_sc_model(
-      params, optax.adagrad(learning_rate=_LEARNING_RATE.value)
-  )
-  opt_state = tx.init(params)
-
-  checkpoint_dir = os.path.join(_MODEL_DIR.value, "checkpoints")
-  checkpointer = ocp.CheckpointManager(checkpoint_dir)
-
-  initial_step = 0
-  if _RESTORE_CHECKPOINT.value:
-    latest_step = checkpointer.latest_step()
-    if latest_step is not None:
-      info("Found checkpoint at step %d. Restoring...", latest_step)
-      ckpt_target = {"params": params, "opt_state": opt_state, "step": 0}
-      restored = checkpointer.restore(
-          latest_step, args=ocp.args.PyTreeRestore(ckpt_target)
-      )
-      params = restored["params"]
-      opt_state = restored["opt_state"]
-      initial_step = restored["step"]
-      info("Restored state from step %d.", initial_step)
-    else:
-      info(
-          "No checkpoint found to restore from. Starting from scratch."
-      )
-
-  @partial(jax.jit, donate_argnums=(0, 5))
-  def train_step_fn(
-      params: Any,
-      labels: jax.Array,
-      dense_features: jax.Array,
-      dense_lookups: Any,
-      embedding_lookups: embed.EmbeddingLookupInput,
-      opt_state,
-      metrics_collection,
-  ):
-    def forward_pass(p, lbl, dense, dense_lkp, embed_lkp):
-      logits = model.apply(p, dense, dense_lkp, embed_lkp)
-      xentropy = optax.sigmoid_binary_cross_entropy(logits, lbl)
-      return jnp.mean(xentropy), logits
-
-    train_fn = jax.value_and_grad(forward_pass, has_aux=True, allow_int=True)
-    (loss_val, logits), grads = train_fn(
-        params, labels, dense_features, dense_lookups, embedding_lookups
-    )
-    preds = jax.nn.sigmoid(logits)
-    binarized_preds = (preds > 0.5).astype(jnp.int32)
-    metric_updates = TrainMetrics.empty().replace(
-        loss=metrax.Average.from_model_output(values=loss_val),
-        accuracy=metrax.Accuracy.from_model_output(binarized_preds, labels),
-    )
-    metrics_collection = metrics_collection.merge(metric_updates)
-    updates, new_opt_state = tx.update(grads, opt_state)
-    new_params = embed_optimizer.apply_updates_for_sc_model(params, updates)
-    return new_params, new_opt_state, metrics_collection
-
-  start_time = time.time()
-  overall_start_time = time.time()
-  train_metrics_collection = TrainMetrics.empty()
-  for step in range(initial_step, _NUM_STEPS.value):
-    with jax.profiler.StepTraceAnnotation("train_step", step_num=step):
-      labels, dense_features, dense_lookups, embedding_lookups = next(producer)
-      params, opt_state, train_metrics_collection = train_step_fn(
-          params, labels, dense_features, dense_lookups, embedding_lookups,
-          opt_state, train_metrics_collection
-      )
-
-    current_step = step + 1
-    if current_step % _LOGGING_INTERVAL.value == 0:
-      end_time = time.time()
-      metrics_on_host = jax.device_get(train_metrics_collection)
-      elapsed_time = end_time - start_time
-      throughput = _BATCH_SIZE.value * _LOGGING_INTERVAL.value / elapsed_time
-
-      info(
-          "Step %d: loss=%.5f, accuracy=%.5f, throughput=%.2f examples/sec",
-          current_step, metrics_on_host.loss.compute(),
-          metrics_on_host.accuracy.compute(), throughput
-      )
-      train_metrics_collection = TrainMetrics.empty()
-      start_time = time.time()
-
-    if current_step % _EVAL_INTERVAL.value == 0 and _EVAL_FILE_PATTERN.value:
-      eval_producer = DLRMDataLoader(
-          file_pattern=_EVAL_FILE_PATTERN.value,
-          batch_size=_BATCH_SIZE.value,
-          is_training=False,
-          num_workers=4,
-          buffer_size=128,
-          feature_specs=feature_specs,
-          mesh=mesh,
-          global_sharding=global_sharding,
-      )
-      eval_loop(
-          eval_producer,
-          eval_step,
-          params,
-          model.apply,
-          max_steps=_EVAL_STEPS.value,
-      )
-      eval_producer.stop()
-
-    if current_step % _SAVE_CHECKPOINT_INTERVAL.value == 0:
-      ckpt_to_save = {
-          "params": params,
-          "opt_state": opt_state,
-          "step": current_step,
-      }
-      checkpointer.save(
-          current_step, args=ocp.args.PyTreeSave(ckpt_to_save), force=True
-      )
-
-  overall_end_time = time.time()
-  total_training_time = overall_end_time - overall_start_time
-  total_steps_trained = _NUM_STEPS.value - initial_step
-  total_examples_processed = total_steps_trained * _BATCH_SIZE.value
-  overall_throughput = total_examples_processed / total_training_time
-  info(
-      "Finished training %d steps in %.2f seconds.",
-      total_steps_trained, total_training_time
-  )
-  info("Overall training throughput: %.2f examples/sec", overall_throughput)
-
-  producer.stop()
-  checkpointer.wait_until_finished()
-  checkpointer.close()
-
-
-def run_evaluation_only(
-    model: DLRMDCNV2,
-    feature_specs: Mapping[str, embedding_spec.FeatureSpec],
-    mesh: jax.sharding.Mesh,
-    global_sharding: NamedSharding,
-):
-  """Runs evaluation on a saved checkpoint."""
-  if not _EVAL_FILE_PATTERN.value:
-    raise ValueError("--eval_file_pattern must be set in 'eval' mode.")
-
-  # Calculate the per-process batch size
-  per_process_batch_size = _BATCH_SIZE.value // jax.process_count()
-
-  checkpoint_dir = os.path.join(_MODEL_DIR.value, "checkpoints")
-  checkpointer = ocp.CheckpointManager(checkpoint_dir)
-  latest_step = checkpointer.latest_step()
-
-  if latest_step is None:
-    raise FileNotFoundError(f"No checkpoint found in {checkpoint_dir} to eval.")
-
-  info(
-      "Found checkpoint at step %d. Restoring for evaluation...", latest_step
-  )
-
-  dummy_producer = DLRMDataLoader(
-      file_pattern=_EVAL_FILE_PATTERN.value,
-      batch_size=per_process_batch_size,
-      is_training=False,
-      num_workers=1,
-      feature_specs=feature_specs,
-      mesh=mesh,
-      global_sharding=global_sharding,
-  )
-  _, dense_features, dense_lookups, embedding_lookups = next(dummy_producer)
-  # Do not call stop() on the dummy_producer.
-  # Let its daemon threads exit with the program.
-
-  params_structure = jax.eval_shape(
-      lambda: model.init(
-          jax.random.key(0), dense_features, dense_lookups, embedding_lookups
-      )
-  )
-
-  dummy_tx = embed_optimizer.create_optimizer_for_sc_model(
-      params_structure, optax.adagrad(learning_rate=0.0)
-  )
-  opt_state_structure = jax.eval_shape(lambda: dummy_tx.init(params_structure))
-
-  restore_target = {
-      "params": params_structure,
-      "opt_state": opt_state_structure,
-      "step": 0,
-  }
-
-  restored_full_dict = checkpointer.restore(
-      latest_step, args=ocp.args.PyTreeRestore(restore_target)
-  )
-  params = restored_full_dict["params"]
-
-  info("Parameters restored. Starting evaluation...")
-
-  eval_producer = DLRMDataLoader(
-      file_pattern=_EVAL_FILE_PATTERN.value,
-      batch_size=per_process_batch_size,
-      is_training=False,
-      num_workers=16,
-      buffer_size=128,
-      feature_specs=feature_specs,
-      mesh=mesh,
-      global_sharding=global_sharding,
-  )
-
-  eval_loop(
-      eval_producer, eval_step, params, model.apply, max_steps=_EVAL_STEPS.value
-  )
-
-  eval_producer.stop()
-  checkpointer.close()
-
-
-def main(argv):
-  del argv
-
+  # Define sharding.
   pd = P("x")
   global_devices = jax.devices()
   mesh = jax.sharding.Mesh(global_devices, "x")
   global_sharding = jax.sharding.NamedSharding(mesh, pd)
 
-  per_process_batch_size = _BATCH_SIZE.value // jax.process_count()
-
-  pd = P("x")
-  global_devices = jax.devices()
-  mesh = jax.sharding.Mesh(global_devices, "x")
-  global_sharding = jax.sharding.NamedSharding(mesh, pd)
-
-  _, feature_specs = create_feature_specs(
-      VOCAB_SIZES, MULTI_HOT_SIZES, per_process_batch_size)
-
-
+  _, feature_specs = create_feature_specs(VOCAB_SIZES)
   def _get_max_ids_per_partition(name: str, batch_size: int) -> int:
+    """Reference implementation for calculating max ids per partition on the fly.
+
+    Args:
+        name: Name of the feature.
+        batch_size: The size of each batch.
+
+    Returns:
+        Estimated maximum number of ids per partition.
+
+    """
+    logging.info("max_ids_per_partition: %s : # of ids: %s", name, batch_size)
     return 4096
 
   def _get_max_unique_ids_per_partition(name: str, batch_size: int) -> int:
+    """Reference implementation for calculating max unique ids per partition on the fly.
+
+    Args:
+        name: Name of the feature.
+        batch_size: The size of each batch.
+
+    Returns:
+        Estimated maximum number of unique ids per partition.
+    """
+    logging.info(
+        "max_unique_ids_per_partition: %s : # of ids: %s", name, batch_size
+    )
     return 2048
 
+  # Table stacking
   embedding.auto_stack_tables(
       feature_specs,
       global_device_count=jax.device_count(),
@@ -627,12 +437,14 @@ def main(argv):
       stack_to_max_unique_ids_per_partition=_get_max_unique_ids_per_partition,
       num_sc_per_device=4,
   )
+
   embedding.prepare_feature_specs_for_training(
       feature_specs,
       global_device_count=jax.device_count(),
       num_sc_per_device=4,
   )
 
+  # Construct the model.
   model = DLRMDCNV2(
       feature_specs=feature_specs,
       mesh=mesh,
@@ -640,15 +452,163 @@ def main(argv):
       global_batch_size=_BATCH_SIZE.value,
       embedding_size=_EMBEDDING_SIZE.value,
       bottom_mlp_dims=[512, 256, _EMBEDDING_SIZE.value],
-      vocab_sizes=VOCAB_SIZES,
   )
 
-  if _MODE.value == "train":
-    train_loop(model, feature_specs, mesh, global_sharding)
-  elif _MODE.value == "eval":
-    run_evaluation_only(model, feature_specs, mesh, global_sharding)
+  producer = DLRMDataLoader(
+      file_pattern=None,
+      batch_size=_BATCH_SIZE.value,
+      num_workers=32,
+      buffer_size=256,
+      feature_specs=feature_specs,
+      mesh=mesh,
+      global_sharding=global_sharding,
+  )
+
+  _, dense_features, embedding_lookups = next(producer)
+  params = model.init(jax.random.key(42), dense_features, embedding_lookups)
+
+  def get_shape(x):
+    return x.shape
+
+  logging.info(
+      "[chandra-debug] params: %s", jax.tree_util.tree_map(get_shape, params)
+  )
+  # logging.info("[chandra-debug] params is %s", params)
+
+  tx = embed_optimizer.create_optimizer_for_sc_model(
+      params,
+      optax.adagrad(learning_rate=_LEARNING_RATE.value),
+  )
+  opt_state = tx.init(params)
+
+  dense_out_shardings = {
+      f"Dense_{i}": {
+          "bias": Format(
+              DLL(major_to_minor=(0,)),
+              NamedSharding(mesh, P()),
+          ),
+          "kernel": Format(
+              DLL(major_to_minor=(0, 1)),
+              NamedSharding(mesh, P()),
+          ),
+      }
+      for i in range(8)
+  }
+
+  stacked_table_names = set([
+      f.table_spec.setting_in_stack.stack_name for _, f in feature_specs.items()
+  ])
+
+  embedding_out_shardings = {
+      "SparseCoreEmbed_0": {
+          "sc_embedding_variables": embed.WithSparseCoreLayout(
+              value={
+                  f"{key}": Format(
+                      DLL(
+                          major_to_minor=(0, 1),
+                          tiling=((8,),),
+                      ),
+                      NamedSharding(mesh, P("x", None)),
+                  )
+                  for key in stacked_table_names
+              },
+              names=("x",),
+              mesh=mesh,
+          )
+      }
+  }
+
+  dcn_out_shardings = {
+      f"bias_{i}": Format(DLL(major_to_minor=(0,)), NamedSharding(mesh, P()))
+      for i in range(3)
+  }
+  dcn_out_shardings.update({
+      f"u_kernel_{i}": Format(
+          DLL(major_to_minor=(0, 1)), NamedSharding(mesh, P())
+      )
+      for i in range(3)
+  })
+  dcn_out_shardings.update({
+      f"v_kernel_{i}": Format(
+          DLL(major_to_minor=(0, 1)), NamedSharding(mesh, P())
+      )
+      for i in range(3)
+  })
+
+  out_shardings = {
+      "params": {
+          **dense_out_shardings,
+          **embedding_out_shardings,
+          **dcn_out_shardings,
+      }
+  }
+
+  @partial(
+      jax.jit,
+      out_shardings=(out_shardings, None, None),
+      donate_argnums=(0,),
+  )
+  def train_step(
+      params: Any,
+      labels: jax.Array,
+      dense_features: jax.Array,
+      embedding_lookup_inputs: embed.EmbeddingLookupInput,
+      opt_state,
+  ):
+    def forward_pass(params, labels, dense_features, embedding_lookup_inputs):
+      logits = model.apply(params, dense_features, embedding_lookup_inputs)
+      xentropy = optax.sigmoid_binary_cross_entropy(
+          logits=logits, labels=labels
+      )
+      return jnp.mean(xentropy), logits
+
+    # Run model forward/backward pass.
+    train_step_fn = jax.value_and_grad(
+        forward_pass, has_aux=True, allow_int=True
+    )
+
+    (loss_val, unused_logits), grads = train_step_fn(
+        params, labels, dense_features, embedding_lookup_inputs
+    )
+
+    updates, opt_state = tx.update(grads, opt_state)
+    params = embed_optimizer.apply_updates_for_sc_model(params, updates)
+
+    return params, opt_state, loss_val
+
+  start_time = time.time()
+
+
+  for step in range(_NUM_STEPS.value):
+    with jax.profiler.StepTraceAnnotation("step", step_num=step):
+      # --------------------------------------------------------------------------
+      # Step 1: SC input processing.
+      # --------------------------------------------------------------------------
+      labels, dense_features, embedding_lookups = next(producer)
+      # ------------------------------------------------------------------------
+      # Step 2: run model.
+      # ------------------------------------------------------------------------
+      params, opt_state, loss_val = train_step(
+          params, labels, dense_features, embedding_lookups, opt_state
+      )
+
+      if step % 1500 == 0:
+        end_time = time.time()
+
+        logging.info(
+            "Step %s: %lf, mean_step_time = %lf",
+            step,
+            loss_val,
+            (end_time - start_time) / 100,
+        )
+        start_time = time.time()
+  producer.stop()
+
+
+def main(argv):
+  del argv
+  test_dlrm_dcnv2_model()
 
 
 if __name__ == "__main__":
   app.run(main)
-
