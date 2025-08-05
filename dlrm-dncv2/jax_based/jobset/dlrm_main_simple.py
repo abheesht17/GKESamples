@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""DLRM DCN v2 model training and evaluation."""
+"""DLRM model training and evaluation."""
 
 import collections
 import functools
@@ -26,8 +26,9 @@ from absl import logging
 from clu import metrics as clu_metrics
 from dataloader import CriteoDataLoader
 from dataloader import DataConfig
-from dlrm_model import DLRMDCNV2
-from dlrm_model import uniform_init
+# --- MODIFIED: Import the simple DLRM model ---
+from dlrm_model_simple import DLRM
+from dlrm_model_simple import uniform_init
 import flax
 import jax
 import jax.numpy as jnp
@@ -321,7 +322,6 @@ def eval_loop(
   metrics_on_host = jax.device_get(eval_metrics_collection)
   loss_val = metrics_on_host.loss.compute()
   accuracy_val = metrics_on_host.accuracy.compute()
-
   info(
       "Evaluation results: loss=%.5f, accuracy=%.5f",
       loss_val,
@@ -339,7 +339,13 @@ def eval_step(
     embedding_lookups: embed.EmbeddingLookupInput,
     metrics_collection,
 ):
-  logits = apply_fn(params, dense_features, dense_lookups, embedding_lookups)
+  logits = apply_fn(
+      params,
+      dense_features,
+      dense_lookups,
+      embedding_lookups,
+      is_training=False,
+  )
   loss = jnp.mean(optax.sigmoid_binary_cross_entropy(logits, labels))
   preds = jax.nn.sigmoid(logits)
   binarized_preds = (preds > 0.5).astype(jnp.int32)
@@ -351,7 +357,7 @@ def eval_step(
 
 
 def train_loop(
-    model: DLRMDCNV2,
+    model: DLRM,
     feature_specs: Mapping[str, embedding_spec.FeatureSpec],
     mesh: jax.sharding.Mesh,
     global_sharding=None,
@@ -370,8 +376,12 @@ def train_loop(
 
   _, dense_features, dense_lookups, embedding_lookups = next(producer)
   params = model.init(
-      jax.random.key(42), dense_features, dense_lookups, embedding_lookups
-  )
+      {"params": jax.random.key(42), "dropout": jax.random.key(1)},
+      dense_features,
+      dense_lookups,
+      embedding_lookups,
+      is_training=True,
+  )["params"]
   tx = embed_optimizer.create_optimizer_for_sc_model(
       params, optax.adagrad(learning_rate=_LEARNING_RATE.value)
   )
@@ -409,7 +419,14 @@ def train_loop(
       metrics_collection,
   ):
     def forward_pass(p, lbl, dense, dense_lkp, embed_lkp):
-      logits = model.apply(p, dense, dense_lkp, embed_lkp)
+      logits = model.apply(
+          {"params": p},
+          dense,
+          dense_lkp,
+          embed_lkp,
+          is_training=True,
+          rngs={"dropout": jax.random.key(int(time.time()))},
+      )
       xentropy = optax.sigmoid_binary_cross_entropy(logits, lbl)
       return jnp.mean(xentropy), logits
 
@@ -445,7 +462,6 @@ def train_loop(
       metrics_on_host = jax.device_get(train_metrics_collection)
       elapsed_time = end_time - start_time
       throughput = _BATCH_SIZE.value * _LOGGING_INTERVAL.value / elapsed_time
-
       info(
           "Step %d: loss=%.5f, accuracy=%.5f, throughput=%.2f examples/sec",
           current_step, metrics_on_host.loss.compute(),
@@ -468,7 +484,7 @@ def train_loop(
       eval_loop(
           eval_producer,
           eval_step,
-          params,
+          {"params": params},
           model.apply,
           max_steps=_EVAL_STEPS.value,
       )
@@ -501,7 +517,7 @@ def train_loop(
 
 
 def run_evaluation_only(
-    model: DLRMDCNV2,
+    model: DLRM,
     feature_specs: Mapping[str, embedding_spec.FeatureSpec],
     mesh: jax.sharding.Mesh,
     global_sharding: NamedSharding,
@@ -531,14 +547,16 @@ def run_evaluation_only(
       global_sharding=global_sharding,
   )
   _, dense_features, dense_lookups, embedding_lookups = next(dummy_producer)
-  # Do not call stop() on the dummy_producer.
-  # Let its daemon threads exit with the program.
 
   params_structure = jax.eval_shape(
       lambda: model.init(
-          jax.random.key(0), dense_features, dense_lookups, embedding_lookups
+          {"params": jax.random.key(0)},
+          dense_features,
+          dense_lookups,
+          embedding_lookups,
+          is_training=False,
       )
-  )
+  )["params"]
 
   dummy_tx = embed_optimizer.create_optimizer_for_sc_model(
       params_structure, optax.adagrad(learning_rate=0.0)
@@ -570,7 +588,11 @@ def run_evaluation_only(
   )
 
   eval_loop(
-      eval_producer, eval_step, params, model.apply, max_steps=_EVAL_STEPS.value
+      eval_producer,
+      eval_step,
+      {"params": params},
+      model.apply,
+      max_steps=_EVAL_STEPS.value,
   )
 
   eval_producer.stop()
@@ -606,13 +628,15 @@ def main(argv):
       num_sc_per_device=4,
   )
 
-  model = DLRMDCNV2(
+  # --- MODIFIED: Instantiate the simple DLRM model ---
+  model = DLRM(
       feature_specs=feature_specs,
       mesh=mesh,
       sharding_axis="x",
       global_batch_size=_BATCH_SIZE.value,
       embedding_size=_EMBEDDING_SIZE.value,
       bottom_mlp_dims=[512, 256, _EMBEDDING_SIZE.value],
+      top_mlp_dims=[1024, 1024, 512, 256, 1],
       vocab_sizes=VOCAB_SIZES,
   )
 
@@ -624,4 +648,3 @@ def main(argv):
 
 if __name__ == "__main__":
   app.run(main)
-

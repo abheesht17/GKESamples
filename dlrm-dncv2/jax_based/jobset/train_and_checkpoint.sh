@@ -2,13 +2,13 @@
 
 set -ex
 export LEARNING_RATE=0.0034
-export BATCH_SIZE=16896
+export BATCH_SIZE=16384
 export EMBEDDING_SIZE=128
-export FILE_PATTERN=gs://qinyiyan-vm/mlperf-dataset/criteo_merge_balanced_4224/train-*
+export FILE_PATTERN="gs://chavoshi-dlrm-training/tb_tf_record_train_val/tb_tf_record_train_val/train/day_*/*"
 export NUM_STEPS=28000
 export CHECKPOINT_INTERVAL=1500
 export EVAL_INTERVAL=1500
-export EVAL_FILE_PATTERN=gs://qinyiyan-vm/mlperf-dataset/criteo_merge_balanced_4224/eval-*
+export EVAL_FILE_PATTERN="gs://chavoshi-dlrm-training/tb_tf_record_train_val/tb_tf_record_train_val/eval/day_23/*"
 export EVAL_STEPS=660
 export MODE=train
 export EMBEDDING_THRESHOLD=21000
