@@ -119,6 +119,7 @@ _RESTORE_CHECKPOINT = flags.DEFINE_bool(
 
 def create_feature_specs(
     vocab_sizes: List[int],
+    batch_size: int,  # <-- ADD THIS ARGUMENT
 ) -> tuple[
     Mapping[str, embedding_spec.TableSpec],
     Mapping[str, embedding_spec.FeatureSpec],
@@ -147,8 +148,9 @@ def create_feature_specs(
     )
     feature_spec = embedding_spec.FeatureSpec(
         table_spec=table_spec,
-        input_shape=(_BATCH_SIZE.value, 1),
-        output_shape=(_BATCH_SIZE.value, _EMBEDDING_SIZE.value),
+        # --- USE THE BATCH_SIZE ARGUMENT ---
+        input_shape=(batch_size, 1),
+        output_shape=(batch_size, _EMBEDDING_SIZE.value),
         name=feature_name,
     )
     feature_specs[feature_name] = feature_spec
@@ -357,9 +359,11 @@ def train_loop(
     global_sharding=None,
 ):
   """Main training and evaluation loop."""
+  per_process_batch_size = _BATCH_SIZE.value // jax.process_count()
+
   producer = DLRMDataLoader(
       file_pattern=_FILE_PATTERN.value,
-      batch_size=_BATCH_SIZE.value,
+      batch_size=per_process_batch_size,
       is_training=True,
       num_workers=16,
       buffer_size=256,
@@ -510,6 +514,9 @@ def run_evaluation_only(
   if not _EVAL_FILE_PATTERN.value:
     raise ValueError("--eval_file_pattern must be set in 'eval' mode.")
 
+  # Calculate the per-process batch size
+  per_process_batch_size = _BATCH_SIZE.value // jax.process_count()
+
   checkpoint_dir = os.path.join(_MODEL_DIR.value, "checkpoints")
   checkpointer = ocp.CheckpointManager(checkpoint_dir)
   latest_step = checkpointer.latest_step()
@@ -523,7 +530,7 @@ def run_evaluation_only(
 
   dummy_producer = DLRMDataLoader(
       file_pattern=_EVAL_FILE_PATTERN.value,
-      batch_size=_BATCH_SIZE.value,
+      batch_size=per_process_batch_size,
       is_training=False,
       num_workers=1,
       feature_specs=feature_specs,
@@ -560,7 +567,7 @@ def run_evaluation_only(
 
   eval_producer = DLRMDataLoader(
       file_pattern=_EVAL_FILE_PATTERN.value,
-      batch_size=_BATCH_SIZE.value,
+      batch_size=per_process_batch_size,
       is_training=False,
       num_workers=16,
       buffer_size=128,
@@ -585,7 +592,15 @@ def main(argv):
   mesh = jax.sharding.Mesh(global_devices, "x")
   global_sharding = jax.sharding.NamedSharding(mesh, pd)
 
-  _, feature_specs = create_feature_specs(VOCAB_SIZES)
+  per_process_batch_size = _BATCH_SIZE.value // jax.process_count()
+
+  pd = P("x")
+  global_devices = jax.devices()
+  mesh = jax.sharding.Mesh(global_devices, "x")
+  global_sharding = jax.sharding.NamedSharding(mesh, pd)
+
+  _, feature_specs = create_feature_specs(VOCAB_SIZES, per_process_batch_size)
+
 
   def _get_max_ids_per_partition(name: str, batch_size: int) -> int:
     return 4096
