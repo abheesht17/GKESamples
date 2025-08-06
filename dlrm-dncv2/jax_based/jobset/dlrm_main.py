@@ -122,6 +122,16 @@ _SAVE_CHECKPOINT_INTERVAL = flags.DEFINE_integer(
 _RESTORE_CHECKPOINT = flags.DEFINE_bool(
     "restore_checkpoint", False, "Restore from the latest checkpoint."
 )
+_MAX_IDS_PER_PARTITION = flags.DEFINE_integer(
+    "max_ids_per_partition",
+    8192,
+    "Max number of IDs per partition for embedding tables.",
+)
+_MAX_UNIQUE_IDS_PER_PARTITION = flags.DEFINE_integer(
+    "max_unique_ids_per_partition",
+    4096,
+    "Max number of unique IDs per partition for embedding tables.",
+)
 
 
 def create_feature_specs(
@@ -149,8 +159,8 @@ def create_feature_specs(
         ),
         combiner="sum",
         name=table_name,
-        max_ids_per_partition=2048,
-        max_unique_ids_per_partition=512,
+        max_ids_per_partition=_MAX_IDS_PER_PARTITION.value,
+        max_unique_ids_per_partition=_MAX_UNIQUE_IDS_PER_PARTITION.value,
     )
     feature_spec = embedding_spec.FeatureSpec(
         table_spec=table_spec,
@@ -584,6 +594,13 @@ def run_evaluation_only(
 def main(argv):
   del argv
 
+  # Print all flag values.
+  info("--- Starting DLRMv2 Training/Evaluation ---")
+  info("--- Flag Values ---")
+  for flag_name in FLAGS:
+    info(f"{flag_name}: {FLAGS[flag_name].value}")
+  info("--------------------")
+
   pd = P("x")
   global_devices = jax.devices()
   mesh = jax.sharding.Mesh(global_devices, "x")
@@ -592,10 +609,10 @@ def main(argv):
   _, feature_specs = create_feature_specs(VOCAB_SIZES)
 
   def _get_max_ids_per_partition(name: str, batch_size: int) -> int:
-    return 4096
+    return _MAX_IDS_PER_PARTITION.value
 
   def _get_max_unique_ids_per_partition(name: str, batch_size: int) -> int:
-    return 2048
+    return _MAX_UNIQUE_IDS_PER_PARTITION.value
 
   embedding.auto_stack_tables(
       feature_specs,
