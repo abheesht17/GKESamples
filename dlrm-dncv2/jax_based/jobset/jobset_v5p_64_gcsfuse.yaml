@@ -24,8 +24,9 @@ spec:
               dnsPolicy: ClusterFirstWithHostNet
               serviceAccountName: chavoshi-dlrm-job-sa
               nodeSelector:
-                cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
-                cloud.google.com/gke-tpu-topology: 8x8
+                # Target a 64-chip v5p slice
+                cloud.google.com/gke-tpu-accelerator: tpu-v5p-slice
+                cloud.google.com/gke-tpu-topology: 4x4x4
               tolerations:
                 - key: google.com/tpu
                   operator: Equal
@@ -77,8 +78,9 @@ spec:
                       value: "tpu"
                     - name: ENABLE_PJRT_COMPATIBILITY
                       value: "true"
+                    # Set sparse cores to 4 for v5p
                     - name: NUM_SPARSE_CORES
-                      value: "2"
+                      value: "4"
                     - name: LIBTPU_INIT_ARGS
                       value: ""
                     - name: XLA_FLAGS
