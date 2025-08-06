@@ -429,6 +429,7 @@ def train_loop(
     return new_params, new_opt_state, metrics_collection
 
   start_time = time.time()
+  overall_start_time = time.time()
   train_metrics_collection = TrainMetrics.empty()
   for step in range(initial_step, _NUM_STEPS.value):
     with jax.profiler.StepTraceAnnotation("train_step", step_num=step):
@@ -442,12 +443,13 @@ def train_loop(
     if current_step % _LOGGING_INTERVAL.value == 0:
       end_time = time.time()
       metrics_on_host = jax.device_get(train_metrics_collection)
+      elapsed_time = end_time - start_time
+      throughput = _BATCH_SIZE.value * _LOGGING_INTERVAL.value / elapsed_time
       
       info(
-          "Step %d: loss=%.5f, accuracy=%.5f, step_time=%.2fms",
+          "Step %d: loss=%.5f, accuracy=%.5f, throughput=%.2f examples/sec",
           current_step, metrics_on_host.loss.compute(),
-          metrics_on_host.accuracy.compute(),
-          (end_time - start_time) * 1000 / _LOGGING_INTERVAL.value
+          metrics_on_host.accuracy.compute(), throughput
       )
       train_metrics_collection = TrainMetrics.empty()
       start_time = time.time()
@@ -482,6 +484,17 @@ def train_loop(
           current_step, args=ocp.args.PyTreeSave(ckpt_to_save), force=True
       )
 
+  overall_end_time = time.time()
+  total_training_time = overall_end_time - overall_start_time
+  total_steps_trained = _NUM_STEPS.value - initial_step
+  total_examples_processed = total_steps_trained * _BATCH_SIZE.value
+  overall_throughput = total_examples_processed / total_training_time
+  info(
+      "Finished training %d steps in %.2f seconds.",
+      total_steps_trained, total_training_time
+  )
+  info("Overall training throughput: %.2f examples/sec", overall_throughput)
+  
   producer.stop()
   checkpointer.wait_until_finished()
   checkpointer.close()

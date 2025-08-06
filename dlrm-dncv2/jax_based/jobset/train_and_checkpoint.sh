@@ -3,13 +3,12 @@
 set -ex
 export LIBTPU_INIT_ARGS=
 export XLA_FLAGS=
-export TPU_NAME=v6e-16-sp
 export LEARNING_RATE=0.0034
 export BATCH_SIZE=16896
 export EMBEDDING_SIZE=128
 export FILE_PATTERN=gs://qinyiyan-vm/mlperf-dataset/criteo_merge_balanced_4224/train-*
 export NUM_STEPS=28000
-export CHECKPOINT_INTERVAL=1500
+export CHECKPOINT_INTERVAL=29000
 export EVAL_INTERVAL=1500
 export EVAL_FILE_PATTERN=gs://qinyiyan-vm/mlperf-dataset/criteo_merge_balanced_4224/train-*
 export EVAL_STEPS=660
