@@ -72,6 +72,12 @@ _EMBEDDING_THRESHOLD = flags.DEFINE_integer(
     "embedding_threshold", 21000,
     "Threshold for placing features on TensorCore or SparseCore."
 )
+_NUM_SPARSE_CORES = flags.DEFINE_integer(
+    "num_sparse_cores",
+    int(os.environ.get("NUM_SPARSE_CORES", 2)),
+    "Number of sparse cores per TPU device.",
+)
+
 
 # --- Mode Flag ---
 _MODE = flags.DEFINE_enum(
@@ -236,7 +242,7 @@ class DLRMDataLoader:
         self.feature_specs,
         self.mesh.local_mesh.size,
         self.mesh.size,
-        num_sc_per_device=2,
+        num_sc_per_device=_NUM_SPARSE_CORES.value,
         sharding_strategy="MOD",
         allow_id_dropping=_ALLOW_ID_DROPPING.value,
     )[0]
@@ -596,12 +602,12 @@ def main(argv):
       global_device_count=jax.device_count(),
       stack_to_max_ids_per_partition=_get_max_ids_per_partition,
       stack_to_max_unique_ids_per_partition=_get_max_unique_ids_per_partition,
-      num_sc_per_device=2,
+      num_sc_per_device=_NUM_SPARSE_CORES.value,
   )
   embedding.prepare_feature_specs_for_training(
       feature_specs,
       global_device_count=jax.device_count(),
-      num_sc_per_device=2,
+      num_sc_per_device=_NUM_SPARSE_CORES.value,
   )
 
   model = DLRMDCNV2(
