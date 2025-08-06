@@ -18,7 +18,7 @@ fi
 
 # After potentially shifting, we require at least one argument for the configuration.
 if [ "$#" -lt 1 ]; then
-    echo -e "${ORANGE}Usage: $0 [prod] {16 | 128} [--rebuild]${NC}"
+    echo -e "${ORANGE}Usage: $0 [prod] {16 | 32 | 64 | 128 | 256} [--rebuild]${NC}"
     exit 1
 fi
 
@@ -41,7 +41,7 @@ case $PROJECT_ALIAS in
         export CLUSTER_ZONE="us-east5-b"
         export CLUSTER_NAME="chavoshi-benchmark-us-east5b"
         export AR_REGION="us-east5"
-        export GCS_BUCKET_NAME="chavoshi-dlrm-training"
+        export GCS_BUCKET_NAME="chavoshi-dlrm-dnc-v2-benchmark"
         export GKE_LOCATION_FLAG="--zone ${CLUSTER_ZONE}"
         ;;
     *)
@@ -62,18 +62,40 @@ case $CONFIG in
     16)
         export YAML_FILE="jobset_v6e_16_gcsfuse.yaml"
         export JOB_NAME="jax-16-dlrm-jobset"
+        export NUM_NODES=4
+        export BATCH_SIZE=$((NUM_NODES * 4224))
+        ;;
+    32)
+        export YAML_FILE="jobset_v6e_32_gcsfuse.yaml"
+        export JOB_NAME="jax-32-dlrm-jobset"
+        export NUM_NODES=8
+        export BATCH_SIZE=$((NUM_NODES * 4224))
+        ;;
+    64)
+        export YAML_FILE="jobset_v6e_64_gcsfuse.yaml"
+        export JOB_NAME="jax-64-dlrm-jobset"
+        export NUM_NODES=16
+        export BATCH_SIZE=$((NUM_NODES * 4224))
         ;;
     128)
         export YAML_FILE="jobset_v6e_128_gcsfuse.yaml"
         export JOB_NAME="jax-128-dlrm-jobset"
+        export NUM_NODES=32
+        export BATCH_SIZE=$((NUM_NODES * 8448))
+        ;;
+    256)
+        export YAML_FILE="jobset_v6e_256_gcsfuse.yaml"
+        export JOB_NAME="jax-256-dlrm-jobset"
+        export NUM_NODES=64
+        export BATCH_SIZE=$((NUM_NODES * 8448))
         ;;
     *)
-        echo -e "${ORANGE}Error: Invalid configuration '$CONFIG'. Choose 16 or 128.${NC}"
+        echo -e "${ORANGE}Error: Invalid configuration '$CONFIG'. Choose 16, 32, 64, 128, or 256.${NC}"
         exit 1
         ;;
 esac
 
-echo -e "${GREEN}Running with JAX job configuration: $CONFIG${NC}"
+echo -e "${GREEN}Running with JAX job configuration: $CONFIG, Node count: $NUM_NODES, Batch size: $BATCH_SIZE${NC}"
 
 ## ------------------- Define Image URL ------------------- ##
 export JAX_IMAGE_URL="${AR_REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO_NAME}/${JAX_IMAGE_NAME}:${IMAGE_TAG}"
@@ -123,7 +145,7 @@ envsubst < "${YAML_FILE}" | kubectl apply -f -
 echo -e "${GREEN}✅ JobSet '${JOB_NAME}' submitted successfully.${NC}"
 
 echo -e "${ORANGE}⏳ Waiting for the main pod (coordinator) to start running...${NC}"
-kubectl get pods 
+kubectl get pods
 # The label selector now uses the correct JobSet labels to find the coordinator pod (job-index=0).
 kubectl wait --for=condition=Ready pod -l jobset.sigs.k8s.io/jobset-name=${JOB_NAME},jobset.sigs.k8s.io/replicatedjob-name=${REPLICATED_JOB_NAME},jobset.sigs.k8s.io/job-index=0 --timeout=15m
 
@@ -133,4 +155,3 @@ echo -e "${ORANGE}🪵 Tailing logs for the main pod. Training output appears he
 kubectl logs -f -l jobset.sigs.k8s.io/jobset-name=${JOB_NAME},jobset.sigs.k8s.io/replicatedjob-name=${REPLICATED_JOB_NAME},jobset.sigs.k8s.io/job-index=0 -c jax-dlrm
 
 echo -e "${GREEN}✅ Script finished.${NC}"
-

@@ -48,12 +48,10 @@ spec:
                   - containerPort: 8431
                   securityContext:
                     privileged: true
-                  # The command now directly calls the python script.
                   command: ["python", "/app/recml/inference/models/jax/DLRM_DCNv2/dlrm_main.py"]
-                  # Arguments are moved from the script to here.
                   args:
                     - --learning_rate=0.0034
-                    - --batch_size=16896
+                    - --batch_size=${BATCH_SIZE}
                     - --embedding_size=128
                     - --embedding_threshold=21000
                     - --model_dir=/gcs/benchmark/model-output/${JOB_NAME}
@@ -70,12 +68,9 @@ spec:
                     - name: gcs-fuse-volume
                       mountPath: /gcs
                       readOnly: false
-                  # Environment variables from the script are now defined here.
                   env:
                     - name: MODEL_DIR
                       value: "/gcs/benchmark/model-output/${JOB_NAME}"
-                    - name: TPU_NAME
-                      value: "${TPU_POOL_NAME}"
                     - name: JAX_PLATFORMS
                       value: "tpu"
                     - name: ENABLE_PJRT_COMPATIBILITY

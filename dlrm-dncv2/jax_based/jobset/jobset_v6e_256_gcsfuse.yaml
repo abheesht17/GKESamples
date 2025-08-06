@@ -13,8 +13,8 @@ spec:
       template:
         spec:
           backoffLimit: 0
-          completions: 32
-          parallelism: 32
+          completions: 64
+          parallelism: 64
           template:
             metadata:
               annotations:
@@ -25,7 +25,7 @@ spec:
               serviceAccountName: chavoshi-dlrm-job-sa
               nodeSelector:
                 cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
-                cloud.google.com/gke-tpu-topology: 8x16
+                cloud.google.com/gke-tpu-topology: 16x16
               tolerations:
                 - key: google.com/tpu
                   operator: Equal
@@ -56,7 +56,7 @@ spec:
                     - --embedding_threshold=21000
                     - --model_dir=/gcs/benchmark/model-output/${JOB_NAME}
                     - --file_pattern=gs://qinyiyan-vm/mlperf-dataset/criteo_merge_balanced_4224/train-*
-                    - --num_steps=15236
+                    - --num_steps=7618
                     - --save_checkpoint_interval=29000
                     - --restore_checkpoint=true
                     - --eval_interval=1500
