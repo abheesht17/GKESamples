@@ -18,7 +18,7 @@ fi
 
 # After potentially shifting, we require at least one argument for the configuration.
 if [ "$#" -lt 1 ]; then
-    echo -e "${ORANGE}Usage: $0 [prod] {16 | 32 | 64 | 128 | 256 | v5p-16 | v5p-32} [--rebuild]${NC}"
+    echo -e "${ORANGE}Usage: $0 [prod] {16 | 32 | 64 | 128 | 256 | v5p-16 | v5p-32 | v5p-64} [--rebuild]${NC}"
     exit 1
 fi
 
@@ -41,7 +41,7 @@ case $PROJECT_ALIAS in
         export CLUSTER_ZONE="us-east5-b"
         export CLUSTER_NAME="chavoshi-benchmark-us-east5b"
         export AR_REGION="us-east5"
-        export GCS_BUCKET_NAME="chavoshi-dlrm-dnc-v2-benchmark"
+        export GCS_BUCKET_NAME="chavoshi-dlrm-training"
         export GKE_LOCATION_FLAG="--zone ${CLUSTER_ZONE}"
         ;;
     *)
@@ -87,8 +87,12 @@ case $CONFIG in
         export YAML_FILE="jobset_v5p_32_gcsfuse.yaml"
         export JOB_NAME="jax-v5p-32-dlrm-jobset"
         ;;
+    v5p-64)
+        export YAML_FILE="jobset_v5p_64_gcsfuse.yaml"
+        export JOB_NAME="jax-v5p-64-dlrm-jobset"
+        ;;
     *)
-        echo -e "${ORANGE}Error: Invalid configuration '$CONFIG'. Choose 16, 32, 64, 128, 256, v5p-16 or v5p-32.${NC}"
+        echo -e "${ORANGE}Error: Invalid configuration '$CONFIG'. Choose 16, 32, 64, 128, 256, v5p-16, v5p-32, or v5p-64.${NC}"
         exit 1
         ;;
 esac
