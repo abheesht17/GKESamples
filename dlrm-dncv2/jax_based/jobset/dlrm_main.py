@@ -67,7 +67,7 @@ MULTI_HOT_SIZES = [
 _NUM_DENSE_FEATURES = flags.DEFINE_integer(
     "num_dense_features", 13, "Number of dense features."
 )
-_EMBEDDING_SIZE = flags.DEFINE_integer("embedding_size", 128, "Embedding size.")
+_EMBEDDING_SIZE = flags.DEFINE_integer("embedding_size", 16, "Embedding size.")
 _EMBEDDING_THRESHOLD = flags.DEFINE_integer(
     "embedding_threshold", 21000,
     "Threshold for placing features on TensorCore or SparseCore."
@@ -80,7 +80,7 @@ _MODE = flags.DEFINE_enum(
 )
 
 # --- Training Flags ---
-_BATCH_SIZE = flags.DEFINE_integer("batch_size", 16896, "Batch size.")
+_BATCH_SIZE = flags.DEFINE_integer("batch_size", 8192, "Batch size.")
 _FILE_PATTERN = flags.DEFINE_string(
     "file_pattern", None, "File pattern for the training data."
 )
@@ -89,7 +89,7 @@ _NUM_STEPS = flags.DEFINE_integer(
     "num_steps", 28000, "Number of steps to train for."
 )
 _LOGGING_INTERVAL = flags.DEFINE_integer(
-    "logging_interval", 1500, "Frequency of logging training metrics."
+    "logging_interval", 6000, "Frequency of logging training metrics."
 )
 _ALLOW_ID_DROPPING = flags.DEFINE_bool(
     "allow_id_dropping", True, "Allow dropping ids during embedding lookup."
@@ -100,10 +100,10 @@ _EVAL_FILE_PATTERN = flags.DEFINE_string(
     "eval_file_pattern", None, "File pattern for the evaluation data."
 )
 _EVAL_INTERVAL = flags.DEFINE_integer(
-    "eval_interval", 1500, "Run evaluation every N steps."
+    "eval_interval", 5000, "Run evaluation every N steps."
 )
 _EVAL_STEPS = flags.DEFINE_integer(
-    "eval_steps", 660, "Number of steps for each eval. 0 for all."
+    "eval_steps", 0, "Number of steps for each eval. 0 for all."
 )
 
 # --- Checkpointing and Misc Flags ---
@@ -111,7 +111,7 @@ _MODEL_DIR = flags.DEFINE_string(
     "model_dir", "/tmp/dlrm_jax", "Model working directory."
 )
 _SAVE_CHECKPOINT_INTERVAL = flags.DEFINE_integer(
-    "save_checkpoint_interval", 1500, "Frequency of saving checkpoints."
+    "save_checkpoint_interval", 5000, "Frequency of saving checkpoints."
 )
 _RESTORE_CHECKPOINT = flags.DEFINE_bool(
     "restore_checkpoint", False, "Restore from the latest checkpoint."
@@ -119,7 +119,7 @@ _RESTORE_CHECKPOINT = flags.DEFINE_bool(
 
 
 def create_feature_specs(
-    vocab_sizes: List[int], batch_size: int, multi_hot_sizes: List[int]
+    vocab_sizes: List[int],
 ) -> tuple[
     Mapping[str, embedding_spec.TableSpec],
     Mapping[str, embedding_spec.FeatureSpec],
@@ -131,9 +131,8 @@ def create_feature_specs(
     if vocab_size <= _EMBEDDING_THRESHOLD.value:
       continue
 
-    table_name = str(i)
-    feature_name = str(i)
-    max_len = multi_hot_sizes[i]
+    table_name = f"{i}"
+    feature_name = f"{i}"
     bound = jnp.sqrt(1.0 / vocab_size)
     table_spec = embedding_spec.TableSpec(
         vocabulary_size=vocab_size,
@@ -144,10 +143,12 @@ def create_feature_specs(
         ),
         combiner="sum",
         name=table_name,
+        max_ids_per_partition=2048,
+        max_unique_ids_per_partition=512,
     )
     feature_spec = embedding_spec.FeatureSpec(
         table_spec=table_spec,
-        input_shape=(batch_size, max_len),
+        input_shape=(_BATCH_SIZE.value, 1),
         output_shape=(_BATCH_SIZE.value, _EMBEDDING_SIZE.value),
         name=feature_name,
     )
@@ -176,7 +177,7 @@ class DLRMDataLoader:
   def __init__(
       self,
       file_pattern: str,
-      batch_size: int,
+      batch_size,
       is_training: bool,
       num_workers=4,
       buffer_size=128,
@@ -214,8 +215,6 @@ class DLRMDataLoader:
 
   def process_inputs(self, feature_batch):
     """Process input features into the required format."""
-    feature_batch = tf.nest.map_structure(lambda x: x.numpy(), feature_batch)
-
     dense_features = feature_batch["dense_features"]
     sparse_features = feature_batch["sparse_features"]
     dense_lookups = {}
@@ -227,11 +226,11 @@ class DLRMDataLoader:
     labels = feature_batch["clicked"]
 
     feature_weights = jax.tree_util.tree_map(
-        lambda x: np.ones_like(x, dtype=np.float32),
+        lambda x: np.array(np.ones_like(x, shape=x.shape, dtype=np.float32)),
         sparse_features,
     )
 
-    processed_sparse, _ = embedding.preprocess_sparse_dense_matmul_input(
+    processed_sparse = embedding.preprocess_sparse_dense_matmul_input(
         sparse_features,
         feature_weights,
         self.feature_specs,
@@ -240,29 +239,34 @@ class DLRMDataLoader:
         num_sc_per_device=2,
         sharding_strategy="MOD",
         allow_id_dropping=_ALLOW_ID_DROPPING.value,
+    )[0]
+    make_global_view = lambda x: jax.tree.map(
+        lambda y: jax.make_array_from_process_local_data(
+            self.global_sharding, y
+        ),
+        x,
     )
-    make_global_view = lambda x: jax.make_array_from_process_local_data(
-        self.global_sharding, x
+    labels = make_global_view(labels)
+    dense_features = make_global_view(dense_features)
+    dense_lookups = make_global_view(dense_lookups)
+    processed_sparse = map(make_global_view, processed_sparse)
+    processed_sparse = embedding.SparseDenseMatmulInput(
+        *processed_sparse
     )
-    
-    labels = jax.tree_map(make_global_view, labels)
-    dense_features = jax.tree_map(make_global_view, dense_features)
-    dense_lookups = jax.tree_map(make_global_view, dense_lookups)
-    processed_sparse = jax.tree_map(make_global_view, embed.EmbeddingLookupInput(*processed_sparse))
-    
     return [labels, dense_features, dense_lookups, processed_sparse]
 
   def _worker_loop(self):
     """Worker thread that continuously generates and processes batches."""
     while True:
       try:
+        # This will fail if the main thread deletes _iterator.
         batch = next(self._iterator)
         processed_batch = self.process_inputs(batch)
         with self._sync:
           self._sync.wait_for(lambda: len(self.buffer) < self.buffer.maxlen)
           self.buffer.append(processed_batch)
           self._sync.notify_all()
-      except (StopIteration, AttributeError):
+      except (StopIteration, AttributeError): # Catch error if iterator is gone
         with self._sync:
           self.buffer.append(None)
           self._sync.notify_all()
@@ -560,15 +564,13 @@ def run_evaluation_only(
 
 def main(argv):
   del argv
-  
-  per_process_batch_size = _BATCH_SIZE.value // jax.process_count()
 
   pd = P("x")
   global_devices = jax.devices()
   mesh = jax.sharding.Mesh(global_devices, "x")
-  global_sharding = NamedSharding(mesh, pd)
+  global_sharding = jax.sharding.NamedSharding(mesh, pd)
 
-  _, feature_specs = create_feature_specs(VOCAB_SIZES, per_process_batch_size, MULTI_HOT_SIZES)
+  _, feature_specs = create_feature_specs(VOCAB_SIZES)
 
   def _get_max_ids_per_partition(name: str, batch_size: int) -> int:
     return 4096
