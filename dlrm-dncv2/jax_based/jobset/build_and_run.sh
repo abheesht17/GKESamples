@@ -18,7 +18,7 @@ fi
 
 # After potentially shifting, we require at least one argument for the configuration.
 if [ "$#" -lt 1 ]; then
-    echo -e "${ORANGE}Usage: $0 [prod] {16 | 32 | 64 | 128 | 256 | v5p-16 | v5p-32 | v5p-64} [--rebuild]${NC}"
+    echo -e "${ORANGE}Usage: $0 [prod] {16 | 32 | 64 | 128 | 256 | v5p-16 | v5p-32 | v5p-64 | v5p-128} [--rebuild]${NC}"
     exit 1
 fi
 
@@ -91,8 +91,12 @@ case $CONFIG in
         export YAML_FILE="jobset_v5p_64_gcsfuse.yaml"
         export JOB_NAME="jax-v5p-64-dlrm-jobset"
         ;;
+    v5p-128)
+        export YAML_FILE="jobset_v5p_128_gcsfuse.yaml"
+        export JOB_NAME="jax-v5p-128-dlrm-jobset"
+        ;;
     *)
-        echo -e "${ORANGE}Error: Invalid configuration '$CONFIG'. Choose 16, 32, 64, 128, 256, v5p-16, v5p-32, or v5p-64.${NC}"
+        echo -e "${ORANGE}Error: Invalid configuration '$CONFIG'. Choose from v6e-{16|32|64|128|256} or v5p-{16|32|64|128}.${NC}"
         exit 1
         ;;
 esac

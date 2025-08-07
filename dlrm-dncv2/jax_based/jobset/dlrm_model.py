@@ -52,6 +52,7 @@ class DLRMDCNV2(nn.Module):
   dcn_layers: int = 3
   projection_dim: int = 512
 
+  @nn.remat
   def bottom_mlp(self, x):
     for dim in self.bottom_mlp_dims:
       previous_dim = x.shape[-1]
@@ -64,6 +65,7 @@ class DLRMDCNV2(nn.Module):
       x = nn.relu(x)
     return x
 
+  @nn.remat
   def top_mlp(self, x):
     previous_dim = x.shape[-1]
     for dim in self.top_mlp_dims[:-1]:
@@ -85,6 +87,7 @@ class DLRMDCNV2(nn.Module):
     x = nn.sigmoid(x)
     return x
 
+  @nn.remat
   def dcn_layer(self, x0):
     xl = x0
     input_dim = x0.shape[-1]

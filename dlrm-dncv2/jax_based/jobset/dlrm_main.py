@@ -447,6 +447,19 @@ def train_loop(
   start_time = time.time()
   overall_start_time = time.time()
   train_metrics_collection = TrainMetrics.empty()
+
+  if _EVAL_FILE_PATTERN.value:
+    eval_producer = DLRMDataLoader(
+        file_pattern=_EVAL_FILE_PATTERN.value,
+        batch_size=_BATCH_SIZE.value,
+        is_training=False,
+        num_workers=4,
+        buffer_size=128,
+        feature_specs=feature_specs,
+        mesh=mesh,
+        global_sharding=global_sharding,
+    )
+
   for step in range(initial_step, _NUM_STEPS.value):
     with jax.profiler.StepTraceAnnotation("train_step", step_num=step):
       labels, dense_features, dense_lookups, embedding_lookups = next(producer)
@@ -471,16 +484,6 @@ def train_loop(
       start_time = time.time()
 
     if current_step % _EVAL_INTERVAL.value == 0 and _EVAL_FILE_PATTERN.value:
-      eval_producer = DLRMDataLoader(
-          file_pattern=_EVAL_FILE_PATTERN.value,
-          batch_size=_BATCH_SIZE.value,
-          is_training=False,
-          num_workers=4,
-          buffer_size=128,
-          feature_specs=feature_specs,
-          mesh=mesh,
-          global_sharding=global_sharding,
-      )
       eval_loop(
           eval_producer,
           eval_step,
@@ -488,7 +491,6 @@ def train_loop(
           model.apply,
           max_steps=_EVAL_STEPS.value,
       )
-      eval_producer.stop()
 
     if current_step % _SAVE_CHECKPOINT_INTERVAL.value == 0:
       ckpt_to_save = {
@@ -512,6 +514,8 @@ def train_loop(
   info("Overall training throughput: %.2f examples/sec", overall_throughput)
   
   producer.stop()
+  if _EVAL_FILE_PATTERN.value:
+    eval_producer.stop()
   checkpointer.wait_until_finished()
   checkpointer.close()
 

@@ -278,9 +278,7 @@ class CriteoDataLoader:
       padding_ds = padding_ds.map(_mark_as_padding).repeat(200)
       dataset = dataset.concatenate(padding_ds).take(660).cache().repeat()
 
-    # dataset = dataset.prefetch(self._prefetch_size)
-
-    dataset = dataset.prefetch(buffer_size=2048)
+    dataset = dataset.prefetch(self._prefetch_size)
     options = tf.data.Options()
     options.deterministic = False
     options.threading.private_threadpool_size = 96
