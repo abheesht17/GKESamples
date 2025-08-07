@@ -41,7 +41,7 @@ case $PROJECT_ALIAS in
         export CLUSTER_ZONE="us-east5-b"
         export CLUSTER_NAME="chavoshi-benchmark-us-east5b"
         export AR_REGION="us-east5"
-        export GCS_BUCKET_NAME="chavoshi-dlrm-training"
+        export GCS_BUCKET_NAME="chavoshi-dlrm-dnc-v2-benchmark"
         export GKE_LOCATION_FLAG="--zone ${CLUSTER_ZONE}"
         ;;
     *)
