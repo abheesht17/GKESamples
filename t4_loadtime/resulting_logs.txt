@@ -1,0 +1,80 @@
+0:00:14.626632860 [32m   13[00m 0x7ca63c0ac240 [36mINFO   [00m [00;01;31m          GST_STATES gstbin.c:2928:gst_bin_change_state_func:<pipeline0>[00m child 'videotestsrc0' changed state to 4(PLAYING) successfully
+0:00:14.626639701 [32m   13[00m 0x7ca63c0ac240 [37mDEBUG  [00m [00;01;31m          GST_STATES gstbin.c:2990:gst_bin_change_state_func:<pipeline0>[00m iterator done
+0:00:14.626649142 [32m   13[00m 0x7ca63c0ac240 [37mDEBUG  [00m [00;01;31m          GST_STATES gstbin.c:3054:gst_bin_change_state_func:<pipeline0>[00m done changing bin's state from PAUSED to PLAYING, now in PAUSED, ret SUCCESS
+0:00:14.626658990 [32m   13[00m 0x7ca63c0ac240 [37mDEBUG  [00m [00;01;31m          GST_STATES gstelement.c:3118:gst_element_change_state:<pipeline0>[00m element changed state SUCCESS
+0:00:14.626667330 [32m   13[00m 0x7ca63c0ac240 [36mINFO   [00m [00;01;31m          GST_STATES gstelement.c:2806:gst_element_continue_state:<pipeline0>[00m completed state change to PLAYING
+0:00:14.626673148 [32m   13[00m 0x7ca63c0ac240 [36mINFO   [00m [00;01;31m          GST_STATES gstelement.c:2706:_priv_gst_element_state_changed:<pipeline0>[00m notifying about state-changed PAUSED to PLAYING (VOID_PENDING pending)
+0:00:14.626689658 [32m   13[00m 0x7ca63c0ac240 [37mDEBUG  [00m [00;01;31m          GST_STATES gstbin.c:1956:bin_element_is_sink:<pipeline0>[00m child fakesink0 is sink
+0:00:14.626732667 [32m   13[00m 0x5d405ac34040 [37mDEBUG  [00m [00;01;31m          GST_STATES gstbin.c:1956:bin_element_is_sink:<pipeline0>[00m child fakesink0 is sink
+0:00:14.626754729 [32m   13[00m 0x5d405ac34040 [37mDEBUG  [00m [00;01;31m          GST_STATES gstbin.c:1956:bin_element_is_sink:<pipeline0>[00m child nvh264enc0 is not sink
+0:00:14.626767074 [32m   13[00m 0x5d405ac34040 [37mDEBUG  [00m [00;01;31m          GST_STATES gstbin.c:1956:bin_element_is_sink:<pipeline0>[00m child videotestsrc0 is not sink
+0:00:14.566861210 [32m   13[00m 0x7df3fc0ac240 [36mINFO   [00m [00;01;31m          GST_STATES gstbin.c:2928:gst_bin_change_state_func:<pipeline0>[00m child 'videotestsrc0' changed state to 4(PLAYING) successfully
+0:00:14.566868506 [32m   13[00m 0x7df3fc0ac240 [37mDEBUG  [00m [00;01;31m          GST_STATES gstbin.c:2990:gst_bin_change_state_func:<pipeline0>[00m iterator done
+0:00:14.566887722 [32m   13[00m 0x7df3fc0ac240 [37mDEBUG  [00m [00;01;31m          GST_STATES gstbin.c:3054:gst_bin_change_state_func:<pipeline0>[00m done changing bin's state from PAUSED to PLAYING, now in PAUSED, ret SUCCESS
+0:00:14.566896237 [32m   13[00m 0x7df3fc0ac240 [37mDEBUG  [00m [00;01;31m          GST_STATES gstelement.c:3118:gst_element_change_state:<pipeline0>[00m element changed state SUCCESS
+0:00:14.566904855 [32m   13[00m 0x7df3fc0ac240 [36mINFO   [00m [00;01;31m          GST_STATES gstelement.c:2806:gst_element_continue_state:<pipeline0>[00m completed state change to PLAYING
+0:00:14.566916342 [32m   13[00m 0x7df3fc0ac240 [36mINFO   [00m [00;01;31m          GST_STATES gstelement.c:2706:_priv_gst_element_state_changed:<pipeline0>[00m notifying about state-changed PAUSED to PLAYING (VOID_PENDING pending)
+0:00:14.566942512 [32m   13[00m 0x7df3fc0ac240 [37mDEBUG  [00m [00;01;31m          GST_STATES gstbin.c:1956:bin_element_is_sink:<pipeline0>[00m child fakesink0 is sink
+0:00:14.566995652 [32m   13[00m 0x5cf10e5f4e40 [37mDEBUG  [00m [00;01;31m          GST_STATES gstbin.c:1956:bin_element_is_sink:<pipeline0>[00m child fakesink0 is sink
+0:00:14.567087110 [32m   13[00m 0x5cf10e5f4e40 [37mDEBUG  [00m [00;01;31m          GST_STATES gstbin.c:1956:bin_element_is_sink:<pipeline0>[00m child nvh264enc0 is not sink
+0:00:14.567108034 [32m   13[00m 0x5cf10e5f4e40 [37mDEBUG  [00m [00;01;31m          GST_STATES gstbin.c:1956:bin_element_is_sink:<pipeline0>[00m child videotestsrc0 is not sink
+0:00:14.612506920 [32m   13[00m 0x7bab6c0ac240 [36mINFO   [00m [00;01;31m          GST_STATES gstbin.c:2928:gst_bin_change_state_func:<pipeline0>[00m child 'videotestsrc0' changed state to 4(PLAYING) successfully
+0:00:14.612514089 [32m   13[00m 0x7bab6c0ac240 [37mDEBUG  [00m [00;01;31m          GST_STATES gstbin.c:2990:gst_bin_change_state_func:<pipeline0>[00m iterator done
+0:00:14.612523770 [32m   13[00m 0x7bab6c0ac240 [37mDEBUG  [00m [00;01;31m          GST_STATES gstbin.c:3054:gst_bin_change_state_func:<pipeline0>[00m done changing bin's state from PAUSED to PLAYING, now in PAUSED, ret SUCCESS
+0:00:14.612536481 [32m   13[00m 0x7bab6c0ac240 [37mDEBUG  [00m [00;01;31m          GST_STATES gstelement.c:3118:gst_element_change_state:<pipeline0>[00m element changed state SUCCESS
+0:00:14.612543282 [32m   13[00m 0x7bab6c0ac240 [36mINFO   [00m [00;01;31m          GST_STATES gstelement.c:2806:gst_element_continue_state:<pipeline0>[00m completed state change to PLAYING
+0:00:14.612553448 [32m   13[00m 0x7bab6c0ac240 [36mINFO   [00m [00;01;31m          GST_STATES gstelement.c:2706:_priv_gst_element_state_changed:<pipeline0>[00m notifying about state-changed PAUSED to PLAYING (VOID_PENDING pending)
+0:00:14.612579885 [32m   13[00m 0x7bab6c0ac240 [37mDEBUG  [00m [00;01;31m          GST_STATES gstbin.c:1956:bin_element_is_sink:<pipeline0>[00m child fakesink0 is sink
+0:00:14.612617694 [32m   13[00m 0x5b02a2bc3640 [37mDEBUG  [00m [00;01;31m          GST_STATES gstbin.c:1956:bin_element_is_sink:<pipeline0>[00m child fakesink0 is sink
+0:00:14.612641407 [32m   13[00m 0x5b02a2bc3640 [37mDEBUG  [00m [00;01;31m          GST_STATES gstbin.c:1956:bin_element_is_sink:<pipeline0>[00m child nvh264enc0 is not sink
+0:00:14.612649561 [32m   13[00m 0x5b02a2bc3640 [37mDEBUG  [00m [00;01;31m          GST_STATES gstbin.c:1956:bin_element_is_sink:<pipeline0>[00m child videotestsrc0 is not sink
+0:00:14.547445160 [32m   13[00m 0x7cfa940ac240 [36mINFO   [00m [00;01;31m          GST_STATES gstbin.c:2928:gst_bin_change_state_func:<pipeline0>[00m child 'videotestsrc0' changed state to 4(PLAYING) successfully
+0:00:14.547452519 [32m   13[00m 0x7cfa940ac240 [37mDEBUG  [00m [00;01;31m          GST_STATES gstbin.c:2990:gst_bin_change_state_func:<pipeline0>[00m iterator done
+0:00:14.547467629 [32m   13[00m 0x7cfa940ac240 [37mDEBUG  [00m [00;01;31m          GST_STATES gstbin.c:3054:gst_bin_change_state_func:<pipeline0>[00m done changing bin's state from PAUSED to PLAYING, now in PAUSED, ret SUCCESS
+0:00:14.547480819 [32m   13[00m 0x7cfa940ac240 [37mDEBUG  [00m [00;01;31m          GST_STATES gstelement.c:3118:gst_element_change_state:<pipeline0>[00m element changed state SUCCESS
+0:00:14.547488024 [32m   13[00m 0x7cfa940ac240 [36mINFO   [00m [00;01;31m          GST_STATES gstelement.c:2806:gst_element_continue_state:<pipeline0>[00m completed state change to PLAYING
+0:00:14.547496758 [32m   13[00m 0x7cfa940ac240 [36mINFO   [00m [00;01;31m          GST_STATES gstelement.c:2706:_priv_gst_element_state_changed:<pipeline0>[00m notifying about state-changed PAUSED to PLAYING (VOID_PENDING pending)
+0:00:14.547519417 [32m   13[00m 0x7cfa940ac240 [37mDEBUG  [00m [00;01;31m          GST_STATES gstbin.c:1956:bin_element_is_sink:<pipeline0>[00m child fakesink0 is sink
+0:00:14.547562755 [32m   13[00m 0x5cafc9054040 [37mDEBUG  [00m [00;01;31m          GST_STATES gstbin.c:1956:bin_element_is_sink:<pipeline0>[00m child fakesink0 is sink
+0:00:14.547611610 [32m   13[00m 0x5cafc9054040 [37mDEBUG  [00m [00;01;31m          GST_STATES gstbin.c:1956:bin_element_is_sink:<pipeline0>[00m child nvh264enc0 is not sink
+0:00:14.547634121 [32m   13[00m 0x5cafc9054040 [37mDEBUG  [00m [00;01;31m          GST_STATES gstbin.c:1956:bin_element_is_sink:<pipeline0>[00m child videotestsrc0 is not sink
+0:00:14.177881210 [32m   13[00m 0x7a6e8c0ac240 [36mINFO   [00m [00;01;31m          GST_STATES gstbin.c:2928:gst_bin_change_state_func:<pipeline0>[00m child 'videotestsrc0' changed state to 4(PLAYING) successfully
+0:00:14.177896252 [32m   13[00m 0x7a6e8c0ac240 [37mDEBUG  [00m [00;01;31m          GST_STATES gstbin.c:2990:gst_bin_change_state_func:<pipeline0>[00m iterator done
+0:00:14.177908819 [32m   13[00m 0x7a6e8c0ac240 [37mDEBUG  [00m [00;01;31m          GST_STATES gstbin.c:3054:gst_bin_change_state_func:<pipeline0>[00m done changing bin's state from PAUSED to PLAYING, now in PAUSED, ret SUCCESS
+0:00:14.177920814 [32m   13[00m 0x7a6e8c0ac240 [37mDEBUG  [00m [00;01;31m          GST_STATES gstelement.c:3118:gst_element_change_state:<pipeline0>[00m element changed state SUCCESS
+0:00:14.177929700 [32m   13[00m 0x7a6e8c0ac240 [36mINFO   [00m [00;01;31m          GST_STATES gstelement.c:2806:gst_element_continue_state:<pipeline0>[00m completed state change to PLAYING
+0:00:14.177940288 [32m   13[00m 0x7a6e8c0ac240 [36mINFO   [00m [00;01;31m          GST_STATES gstelement.c:2706:_priv_gst_element_state_changed:<pipeline0>[00m notifying about state-changed PAUSED to PLAYING (VOID_PENDING pending)
+0:00:14.177965328 [32m   13[00m 0x7a6e8c0ac240 [37mDEBUG  [00m [00;01;31m          GST_STATES gstbin.c:1956:bin_element_is_sink:<pipeline0>[00m child fakesink0 is sink
+0:00:14.178017859 [32m   13[00m 0x57587cc5ac40 [37mDEBUG  [00m [00;01;31m          GST_STATES gstbin.c:1956:bin_element_is_sink:<pipeline0>[00m child fakesink0 is sink
+0:00:14.178053674 [32m   13[00m 0x57587cc5ac40 [37mDEBUG  [00m [00;01;31m          GST_STATES gstbin.c:1956:bin_element_is_sink:<pipeline0>[00m child nvh264enc0 is not sink
+0:00:14.178066859 [32m   13[00m 0x57587cc5ac40 [37mDEBUG  [00m [00;01;31m          GST_STATES gstbin.c:1956:bin_element_is_sink:<pipeline0>[00m child videotestsrc0 is not sink
+0:00:14.632289487 [32m   13[00m 0x7862800ac240 [36mINFO   [00m [00;01;31m          GST_STATES gstbin.c:2928:gst_bin_change_state_func:<pipeline0>[00m child 'videotestsrc0' changed state to 4(PLAYING) successfully
+0:00:14.632311717 [32m   13[00m 0x7862800ac240 [37mDEBUG  [00m [00;01;31m          GST_STATES gstbin.c:2990:gst_bin_change_state_func:<pipeline0>[00m iterator done
+0:00:14.632328202 [32m   13[00m 0x7862800ac240 [37mDEBUG  [00m [00;01;31m          GST_STATES gstbin.c:3054:gst_bin_change_state_func:<pipeline0>[00m done changing bin's state from PAUSED to PLAYING, now in PAUSED, ret SUCCESS
+0:00:14.632340353 [32m   13[00m 0x7862800ac240 [37mDEBUG  [00m [00;01;31m          GST_STATES gstelement.c:3118:gst_element_change_state:<pipeline0>[00m element changed state SUCCESS
+0:00:14.632347744 [32m   13[00m 0x7862800ac240 [36mINFO   [00m [00;01;31m          GST_STATES gstelement.c:2806:gst_element_continue_state:<pipeline0>[00m completed state change to PLAYING
+0:00:14.632356255 [32m   13[00m 0x7862800ac240 [36mINFO   [00m [00;01;31m          GST_STATES gstelement.c:2706:_priv_gst_element_state_changed:<pipeline0>[00m notifying about state-changed PAUSED to PLAYING (VOID_PENDING pending)
+0:00:14.632377741 [32m   13[00m 0x7862800ac240 [37mDEBUG  [00m [00;01;31m          GST_STATES gstbin.c:1956:bin_element_is_sink:<pipeline0>[00m child fakesink0 is sink
+0:00:14.632437704 [32m   13[00m 0x5ca95fa7e640 [37mDEBUG  [00m [00;01;31m          GST_STATES gstbin.c:1956:bin_element_is_sink:<pipeline0>[00m child fakesink0 is sink
+0:00:14.632463330 [32m   13[00m 0x5ca95fa7e640 [37mDEBUG  [00m [00;01;31m          GST_STATES gstbin.c:1956:bin_element_is_sink:<pipeline0>[00m child nvh264enc0 is not sink
+0:00:14.632471745 [32m   13[00m 0x5ca95fa7e640 [37mDEBUG  [00m [00;01;31m          GST_STATES gstbin.c:1956:bin_element_is_sink:<pipeline0>[00m child videotestsrc0 is not sink
+0:00:14.427072390 [32m   13[00m 0x7eac1c0ac240 [36mINFO   [00m [00;01;31m          GST_STATES gstbin.c:2928:gst_bin_change_state_func:<pipeline0>[00m child 'videotestsrc0' changed state to 4(PLAYING) successfully
+0:00:14.427104316 [32m   13[00m 0x7eac1c0ac240 [37mDEBUG  [00m [00;01;31m          GST_STATES gstbin.c:2990:gst_bin_change_state_func:<pipeline0>[00m iterator done
+0:00:14.427130988 [32m   13[00m 0x7eac1c0ac240 [37mDEBUG  [00m [00;01;31m          GST_STATES gstbin.c:3054:gst_bin_change_state_func:<pipeline0>[00m done changing bin's state from PAUSED to PLAYING, now in PAUSED, ret SUCCESS
+0:00:14.427139592 [32m   13[00m 0x7eac1c0ac240 [37mDEBUG  [00m [00;01;31m          GST_STATES gstelement.c:3118:gst_element_change_state:<pipeline0>[00m element changed state SUCCESS
+0:00:14.427148522 [32m   13[00m 0x7eac1c0ac240 [36mINFO   [00m [00;01;31m          GST_STATES gstelement.c:2806:gst_element_continue_state:<pipeline0>[00m completed state change to PLAYING
+0:00:14.427157563 [32m   13[00m 0x7eac1c0ac240 [36mINFO   [00m [00;01;31m          GST_STATES gstelement.c:2706:_priv_gst_element_state_changed:<pipeline0>[00m notifying about state-changed PAUSED to PLAYING (VOID_PENDING pending)
+0:00:14.427185684 [32m   13[00m 0x7eac1c0ac240 [37mDEBUG  [00m [00;01;31m          GST_STATES gstbin.c:1956:bin_element_is_sink:<pipeline0>[00m child fakesink0 is sink
+0:00:14.427223192 [32m   13[00m 0x598bbd275040 [37mDEBUG  [00m [00;01;31m          GST_STATES gstbin.c:1956:bin_element_is_sink:<pipeline0>[00m child fakesink0 is sink
+0:00:14.427246972 [32m   13[00m 0x598bbd275040 [37mDEBUG  [00m [00;01;31m          GST_STATES gstbin.c:1956:bin_element_is_sink:<pipeline0>[00m child nvh264enc0 is not sink
+0:00:14.427258825 [32m   13[00m 0x598bbd275040 [37mDEBUG  [00m [00;01;31m          GST_STATES gstbin.c:1956:bin_element_is_sink:<pipeline0>[00m child videotestsrc0 is not sink
+0:00:14.572114842 [32m   13[00m 0x7b40480ac240 [36mINFO   [00m [00;01;31m          GST_STATES gstbin.c:2928:gst_bin_change_state_func:<pipeline0>[00m child 'videotestsrc0' changed state to 4(PLAYING) successfully
+0:00:14.572125087 [32m   13[00m 0x7b40480ac240 [37mDEBUG  [00m [00;01;31m          GST_STATES gstbin.c:2990:gst_bin_change_state_func:<pipeline0>[00m iterator done
+0:00:14.572139365 [32m   13[00m 0x7b40480ac240 [37mDEBUG  [00m [00;01;31m          GST_STATES gstbin.c:3054:gst_bin_change_state_func:<pipeline0>[00m done changing bin's state from PAUSED to PLAYING, now in PAUSED, ret SUCCESS
+0:00:14.572152714 [32m   13[00m 0x7b40480ac240 [37mDEBUG  [00m [00;01;31m          GST_STATES gstelement.c:3118:gst_element_change_state:<pipeline0>[00m element changed state SUCCESS
+0:00:14.572161062 [32m   13[00m 0x7b40480ac240 [36mINFO   [00m [00;01;31m          GST_STATES gstelement.c:2806:gst_element_continue_state:<pipeline0>[00m completed state change to PLAYING
+0:00:14.572172097 [32m   13[00m 0x7b40480ac240 [36mINFO   [00m [00;01;31m          GST_STATES gstelement.c:2706:_priv_gst_element_state_changed:<pipeline0>[00m notifying about state-changed PAUSED to PLAYING (VOID_PENDING pending)
+0:00:14.572211480 [32m   13[00m 0x7b40480ac240 [37mDEBUG  [00m [00;01;31m          GST_STATES gstbin.c:1956:bin_element_is_sink:<pipeline0>[00m child fakesink0 is sink
+0:00:14.572249728 [32m   13[00m 0x5b1285dfda40 [37mDEBUG  [00m [00;01;31m          GST_STATES gstbin.c:1956:bin_element_is_sink:<pipeline0>[00m child fakesink0 is sink
+0:00:14.572275026 [32m   13[00m 0x5b1285dfda40 [37mDEBUG  [00m [00;01;31m          GST_STATES gstbin.c:1956:bin_element_is_sink:<pipeline0>[00m child nvh264enc0 is not sink
+0:00:14.572286026 [32m   13[00m 0x5b1285dfda40 [37mDEBUG  [00m [00;01;31m          GST_STATES gstbin.c:1956:bin_element_is_sink:<pipeline0>[00m child videotestsrc0 is not sink

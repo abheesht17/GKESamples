@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gstreamer-test
+spec:
+  replicas: 8
+  selector:
+    matchLabels:
+      app: gstreamer-test
+  template:
+    metadata:
+      labels:
+        app: gstreamer-test
+    spec:
+      nodeSelector:
+        cloud.google.com/gke-nodepool: t4-timesharing-pool
+      containers:
+      - name: ui-streamer
+        image: ${IMAGE_TAG}
+        env:
+        - name: GST_DEBUG
+          value: "GST_STATES:5,nvh264enc:5"
+        resources:
+          limits:
+            nvidia.com/gpu: 1
