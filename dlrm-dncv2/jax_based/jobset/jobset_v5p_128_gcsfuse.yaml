@@ -51,7 +51,7 @@ spec:
                   command: ["python", "/app/recml/inference/models/jax/DLRM_DCNv2/dlrm_main.py"]
                   args:
                     - --learning_rate=0.0034
-                    - --batch_size=135168
+                    - --batch_size=33792
                     - --embedding_size=8
                     - --embedding_threshold=21000
                     - --model_dir=/gcs/benchmark/model-output/${JOB_NAME}
