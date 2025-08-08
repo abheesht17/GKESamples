@@ -20,6 +20,7 @@ import threading
 import time
 from typing import Any, Callable, List, Mapping
 
+import tensorflow as tf
 from absl import app
 from absl import flags
 from absl import logging
@@ -71,6 +72,12 @@ _EMBEDDING_THRESHOLD = flags.DEFINE_integer(
     "embedding_threshold", 21000,
     "Threshold for placing features on TensorCore or SparseCore."
 )
+_NUM_SPARSE_CORES = flags.DEFINE_integer(
+    "num_sparse_cores",
+    int(os.environ.get("NUM_SPARSE_CORES", 2)),
+    "Number of sparse cores per TPU device.",
+)
+
 
 # --- Mode Flag ---
 _MODE = flags.DEFINE_enum(
@@ -115,6 +122,16 @@ _SAVE_CHECKPOINT_INTERVAL = flags.DEFINE_integer(
 _RESTORE_CHECKPOINT = flags.DEFINE_bool(
     "restore_checkpoint", False, "Restore from the latest checkpoint."
 )
+_MAX_IDS_PER_PARTITION = flags.DEFINE_integer(
+    "max_ids_per_partition",
+    8192,
+    "Max number of IDs per partition for embedding tables.",
+)
+_MAX_UNIQUE_IDS_PER_PARTITION = flags.DEFINE_integer(
+    "max_unique_ids_per_partition",
+    4096,
+    "Max number of unique IDs per partition for embedding tables.",
+)
 
 
 def create_feature_specs(
@@ -142,8 +159,8 @@ def create_feature_specs(
         ),
         combiner="sum",
         name=table_name,
-        max_ids_per_partition=2048,
-        max_unique_ids_per_partition=512,
+        max_ids_per_partition=_MAX_IDS_PER_PARTITION.value,
+        max_unique_ids_per_partition=_MAX_UNIQUE_IDS_PER_PARTITION.value,
     )
     feature_spec = embedding_spec.FeatureSpec(
         table_spec=table_spec,
@@ -224,7 +241,7 @@ class DLRMDataLoader:
 
     labels = feature_batch["clicked"]
 
-    feature_weights = jax.tree.map(
+    feature_weights = jax.tree_util.tree_map(
         lambda x: np.array(np.ones_like(x, shape=x.shape, dtype=np.float32)),
         sparse_features,
     )
@@ -235,7 +252,7 @@ class DLRMDataLoader:
         self.feature_specs,
         self.mesh.local_mesh.size,
         self.mesh.size,
-        num_sc_per_device=4,
+        num_sc_per_device=_NUM_SPARSE_CORES.value,
         sharding_strategy="MOD",
         allow_id_dropping=_ALLOW_ID_DROPPING.value,
     )[0]
@@ -316,7 +333,7 @@ def eval_loop(
     if max_steps > 0 and step_count >= max_steps:
       info("Reached max evaluation steps (%d).", max_steps)
       break
-
+  
   info("Finished evaluation after %d steps.", step_count)
   metrics_on_host = jax.device_get(eval_metrics_collection)
   loss_val = metrics_on_host.loss.compute()
@@ -375,7 +392,7 @@ def train_loop(
       params, optax.adagrad(learning_rate=_LEARNING_RATE.value)
   )
   opt_state = tx.init(params)
-
+  
   checkpoint_dir = os.path.join(_MODEL_DIR.value, "checkpoints")
   checkpointer = ocp.CheckpointManager(checkpoint_dir)
 
@@ -430,6 +447,19 @@ def train_loop(
   start_time = time.time()
   overall_start_time = time.time()
   train_metrics_collection = TrainMetrics.empty()
+
+  if _EVAL_FILE_PATTERN.value:
+    eval_producer = DLRMDataLoader(
+        file_pattern=_EVAL_FILE_PATTERN.value,
+        batch_size=_BATCH_SIZE.value,
+        is_training=False,
+        num_workers=4,
+        buffer_size=128,
+        feature_specs=feature_specs,
+        mesh=mesh,
+        global_sharding=global_sharding,
+    )
+
   for step in range(initial_step, _NUM_STEPS.value):
     with jax.profiler.StepTraceAnnotation("train_step", step_num=step):
       labels, dense_features, dense_lookups, embedding_lookups = next(producer)
@@ -444,6 +474,7 @@ def train_loop(
       metrics_on_host = jax.device_get(train_metrics_collection)
       elapsed_time = end_time - start_time
       throughput = _BATCH_SIZE.value * _LOGGING_INTERVAL.value / elapsed_time
+      
       info(
           "Step %d: loss=%.5f, accuracy=%.5f, throughput=%.2f examples/sec",
           current_step, metrics_on_host.loss.compute(),
@@ -453,16 +484,6 @@ def train_loop(
       start_time = time.time()
 
     if current_step % _EVAL_INTERVAL.value == 0 and _EVAL_FILE_PATTERN.value:
-      eval_producer = DLRMDataLoader(
-          file_pattern=_EVAL_FILE_PATTERN.value,
-          batch_size=_BATCH_SIZE.value,
-          is_training=False,
-          num_workers=4,
-          buffer_size=128,
-          feature_specs=feature_specs,
-          mesh=mesh,
-          global_sharding=global_sharding,
-      )
       eval_loop(
           eval_producer,
           eval_step,
@@ -470,7 +491,6 @@ def train_loop(
           model.apply,
           max_steps=_EVAL_STEPS.value,
       )
-      eval_producer.stop()
 
     if current_step % _SAVE_CHECKPOINT_INTERVAL.value == 0:
       ckpt_to_save = {
@@ -492,8 +512,10 @@ def train_loop(
       total_steps_trained, total_training_time
   )
   info("Overall training throughput: %.2f examples/sec", overall_throughput)
-
+  
   producer.stop()
+  if _EVAL_FILE_PATTERN.value:
+    eval_producer.stop()
   checkpointer.wait_until_finished()
   checkpointer.close()
 
@@ -529,8 +551,6 @@ def run_evaluation_only(
       global_sharding=global_sharding,
   )
   _, dense_features, dense_lookups, embedding_lookups = next(dummy_producer)
-  # Do not call stop() on the dummy_producer.
-  # Let its daemon threads exit with the program.
 
   params_structure = jax.eval_shape(
       lambda: model.init(
@@ -578,6 +598,13 @@ def run_evaluation_only(
 def main(argv):
   del argv
 
+  # Print all flag values.
+  info("--- Starting DLRMv2 Training/Evaluation ---")
+  info("--- Flag Values ---")
+  for flag_name in FLAGS:
+    info(f"{flag_name}: {FLAGS[flag_name].value}")
+  info("--------------------")
+
   pd = P("x")
   global_devices = jax.devices()
   mesh = jax.sharding.Mesh(global_devices, "x")
@@ -586,22 +613,22 @@ def main(argv):
   _, feature_specs = create_feature_specs(VOCAB_SIZES)
 
   def _get_max_ids_per_partition(name: str, batch_size: int) -> int:
-    return 4096
+    return _MAX_IDS_PER_PARTITION.value
 
   def _get_max_unique_ids_per_partition(name: str, batch_size: int) -> int:
-    return 2048
+    return _MAX_UNIQUE_IDS_PER_PARTITION.value
 
   embedding.auto_stack_tables(
       feature_specs,
       global_device_count=jax.device_count(),
       stack_to_max_ids_per_partition=_get_max_ids_per_partition,
       stack_to_max_unique_ids_per_partition=_get_max_unique_ids_per_partition,
-      num_sc_per_device=4,
+      num_sc_per_device=_NUM_SPARSE_CORES.value,
   )
   embedding.prepare_feature_specs_for_training(
       feature_specs,
       global_device_count=jax.device_count(),
-      num_sc_per_device=4,
+      num_sc_per_device=_NUM_SPARSE_CORES.value,
   )
 
   model = DLRMDCNV2(

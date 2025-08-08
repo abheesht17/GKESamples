@@ -44,12 +44,6 @@ RUN \
 RUN pip install --no-cache-dir -U "jax[tpu]>0.4.23" -f https://storage.googleapis.com/jax-releases/libtpu_releases.html
 
 # 9. Copy local, modified dlrm_main.py to overwrite the one from the git repo.
+COPY dataloader.py /app/recml/inference/models/jax/DLRM_DCNv2/dataloader.py
+COPY dlrm_model.py /app/recml/inference/models/jax/DLRM_DCNv2/dlrm_model.py
 COPY dlrm_main.py /app/recml/inference/models/jax/DLRM_DCNv2/dlrm_main.py 
-
-# 10. Copy the customized training script into the container.
-# This script should be in the same directory where you run `docker build`.
-COPY train_and_checkpoint.sh .
-
-# 11. Make the training script executable.
-RUN chmod +x train_and_checkpoint.sh
-

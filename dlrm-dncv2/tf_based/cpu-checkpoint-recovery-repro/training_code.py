@@ -9,6 +9,7 @@ import argparse
 import json
 import os
 import random
+import time  # Added for throughput calculation
 from typing import List
 
 import numpy as np
@@ -47,7 +48,7 @@ os.environ['TF_DETERMINISTIC_OPS'] = '1'
 
 # Constants
 GCS_BUCKET = 'gs://chavoshi-dlrm-training/'
-GLOBAL_BATCH_SIZE = 16*64
+GLOBAL_BATCH_SIZE = 16 * 64
 MOVIE_VOCAB_SIZE = 2048
 USER_VOCAB_SIZE = 2048
 EMBED_DIM = 64
@@ -68,7 +69,8 @@ if not use_cpu_strategy:
 
   def shuffle(endpoints, device_assignment) -> List[str]:
     dc_idx_mapping = {}
-    for i, coordinate in enumerate(device_assignment.topology.device_coordinates):
+    for i, coordinate in enumerate(
+        device_assignment.topology.device_coordinates):
       dc_idx_mapping[coordinate.tobytes()] = i
 
     endpoints_as_list = endpoints.split(',')
@@ -78,22 +80,25 @@ if not use_cpu_strategy:
     return ",".join(shuffled_endpoints)
 
 
-  hardware_feature = tf.tpu.experimental.HardwareFeature(resolver.tpu_hardware_feature)
+  hardware_feature = tf.tpu.experimental.HardwareFeature(
+      resolver.tpu_hardware_feature)
   embedding_v2 = (tf.tpu.experimental.HardwareFeature.EmbeddingFeature.V2)
 
-  shuffle_endpoints = os.environ.get('SHUFFLE_ENDPOINTS', 'false').lower() == 'true'
+  shuffle_endpoints = os.environ.get('SHUFFLE_ENDPOINTS',
+                                     'false').lower() == 'true'
 
-  enable_device_assignment = os.environ.get('ENABLE_DEVICE_ASSIGNMENT', 'false').lower() == 'true'
+  enable_device_assignment = os.environ.get(
+      'ENABLE_DEVICE_ASSIGNMENT', 'false').lower() == 'true'
 
   print("====================================> run time configurations are as follows:")
   print(f'Shuffle endpoints: {shuffle_endpoints}')
   print(f'Enable device assignment: {enable_device_assignment}')
   print(f'Hardware feature: {hardware_feature}')
 
-
   if hardware_feature.embedding_feature == embedding_v2:
     tpu_system_metadata = resolver.get_tpu_system_metadata()
-    device_assignment = tf.tpu.experimental.DeviceAssignment.build(topology, num_replicas=tpu_system_metadata.num_cores)
+    device_assignment = tf.tpu.experimental.DeviceAssignment.build(
+        topology, num_replicas=tpu_system_metadata.num_cores)
 
     tpu_name = _get_grpc_endpoint_for_tpu_cluster_resolver()
     shuffled_endpoints = shuffle(tpu_name, device_assignment)
@@ -101,7 +106,8 @@ if not use_cpu_strategy:
 
     if shuffle_endpoints and tpu_name != shuffled_endpoints:
       print('shuffling')
-      resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu=shuffled_endpoints)
+      resolver = tf.distribute.cluster_resolver.TPUClusterResolver(
+          tpu=shuffled_endpoints)
       tf.config.experimental_connect_to_cluster(resolver)
       topology = tf.tpu.experimental.initialize_tpu_system(resolver)
   else:
@@ -112,22 +118,24 @@ if use_cpu_strategy:
   strategy = tf.distribute.OneDeviceStrategy('/cpu:0')
 elif enable_device_assignment and not shuffle_endpoints:
   print('passing device assignment')
-  strategy = tf.distribute.TPUStrategy(resolver, experimental_device_assignment=device_assignment)
+  strategy = tf.distribute.TPUStrategy(
+      resolver, experimental_device_assignment=device_assignment)
 else:
   print('not passing device assignment')
   strategy = tf.distribute.TPUStrategy(resolver)
-
 
 PER_REPLICA_BATCH_SIZE = GLOBAL_BATCH_SIZE // strategy.num_replicas_in_sync
 print(f'Per-replica batch size: {PER_REPLICA_BATCH_SIZE}')
 
 ratings = tfds.load(
-    'movielens/100k-ratings', split='train', data_dir=GCS_BUCKET, shuffle_files=False).map(
-        lambda x: {
-            'movie_id': tf.cast(tf.strings.to_number(x['movie_id']), tf.int32),
-            'user_id': tf.cast(tf.strings.to_number(x['user_id']), tf.int32),
-            'user_rating': x['user_rating']
-        })
+    'movielens/100k-ratings',
+    split='train',
+    data_dir=GCS_BUCKET,
+    shuffle_files=False).map(lambda x: {
+        'movie_id': tf.cast(tf.strings.to_number(x['movie_id']), tf.int32),
+        'user_id': tf.cast(tf.strings.to_number(x['user_id']), tf.int32),
+        'user_rating': x['user_rating']
+    })
 
 
 def prepare_dataset(split):
@@ -155,21 +163,28 @@ def prepare_dataset(split):
 train_ds = prepare_dataset('train')
 test_ds = prepare_dataset('test')
 input_options = tf.distribute.InputOptions(experimental_fetch_to_device=False)
-dist_train_ds = strategy.experimental_distribute_dataset(train_ds, options=input_options)
-dist_test_ds = strategy.experimental_distribute_dataset(test_ds, options=input_options)
+dist_train_ds = strategy.experimental_distribute_dataset(
+    train_ds, options=input_options)
+dist_test_ds = strategy.experimental_distribute_dataset(
+    test_ds, options=input_options)
 
 optimizer = tf.keras.optimizers.legacy.Adagrad(learning_rate=0.1)
 
-user_table = tf.tpu.experimental.embedding.TableConfig(vocabulary_size=USER_VOCAB_SIZE, dim=EMBED_DIM, name='user_id')
+user_table = tf.tpu.experimental.embedding.TableConfig(
+    vocabulary_size=USER_VOCAB_SIZE, dim=EMBED_DIM, name='user_id')
 movie_table = tf.tpu.experimental.embedding.TableConfig(
     vocabulary_size=MOVIE_VOCAB_SIZE, dim=EMBED_DIM, name='movie_id')
 feature_config = {
     'user_id':
         tf.tpu.experimental.embedding.FeatureConfig(
-            table=user_table, output_shape=[PER_REPLICA_BATCH_SIZE], name='user_id'),
+            table=user_table,
+            output_shape=[PER_REPLICA_BATCH_SIZE],
+            name='user_id'),
     'movie_id':
         tf.tpu.experimental.embedding.FeatureConfig(
-            table=movie_table, output_shape=[PER_REPLICA_BATCH_SIZE], name='movie_id'),
+            table=movie_table,
+            output_shape=[PER_REPLICA_BATCH_SIZE],
+            name='movie_id'),
 }
 
 
@@ -180,14 +195,18 @@ class EmbeddingModel(tfrs.models.Model):
     """Initialize the embedding model."""
     super().__init__()
     self.embedding_layer = TPUEmbedding(
-        feature_config, optimizer, batch_size=PER_REPLICA_BATCH_SIZE, pipeline_execution_with_tensor_core=True)
+        feature_config,
+        optimizer,
+        batch_size=PER_REPLICA_BATCH_SIZE,
+        pipeline_execution_with_tensor_core=True)
     self.ratings = tf.keras.Sequential([
         tf.keras.layers.Dense(256, activation='relu'),
         tf.keras.layers.Dense(64, activation='relu'),
         tf.keras.layers.Dense(1)
     ])
     self.task = tfrs.tasks.Ranking(
-        loss=tf.keras.losses.MeanSquaredError(reduction=tf.keras.losses.Reduction.NONE),
+        loss=tf.keras.losses.MeanSquaredError(
+            reduction=tf.keras.losses.Reduction.NONE),
         metrics=[tf.keras.metrics.RootMeanSquaredError()])
 
   def compute_loss(self, features, training=False):
@@ -200,16 +219,56 @@ class EmbeddingModel(tfrs.models.Model):
     Returns:
       Computed loss value.
     """
-    del training 
-    emb = self.embedding_layer({'user_id': features['user_id'], 'movie_id': features['movie_id']})
+    del training
+    emb = self.embedding_layer({
+        'user_id': features['user_id'],
+        'movie_id': features['movie_id']
+    })
     preds = self.ratings(tf.concat([emb['user_id'], emb['movie_id']], axis=1))
-    return (tf.reduce_sum(self.task(labels=features['user_rating'], predictions=preds)) *
+    return (tf.reduce_sum(
+        self.task(labels=features['user_rating'], predictions=preds)) *
             (1 / (PER_REPLICA_BATCH_SIZE * strategy.num_replicas_in_sync)))
+
+
+class ThroughputCallback(tf.keras.callbacks.Callback):
+  """A Keras callback to measure and print end-to-end training throughput."""
+
+  def __init__(self, global_batch_size):
+    super().__init__()
+    self.global_batch_size = global_batch_size
+    self.start_time = 0
+
+  def on_train_begin(self, logs=None):
+    """Record the start time of training."""
+    self.start_time = time.time()
+    print("Throughput measurement: training started.")
+
+  def on_train_end(self, logs=None):
+    """Calculate and print throughput at the end of training."""
+    end_time = time.time()
+    duration = end_time - self.start_time
+
+    # self.params contains training parameters like 'epochs', 'steps'
+    total_steps = self.params.get('steps', 0) * self.params.get('epochs', 1)
+    if not total_steps:
+      print("Could not determine total steps from Keras params.")
+      return
+
+    total_examples = total_steps * self.global_batch_size
+
+    throughput = total_examples / duration
+
+    print("\n--- End-to-End Training Throughput ---")
+    print(f"  Total examples processed: {total_examples:,}")
+    print(f"  Total training time: {duration:.2f} seconds")
+    print(f"  Overall throughput: {throughput:,.2f} examples/sec")
+    print("--------------------------------------\n")
 
 
 if __name__ == '__main__':
   parser = argparse.ArgumentParser()
-  parser.add_argument('--training', action='store_true', help='Run training before evaluation')
+  parser.add_argument(
+      '--training', action='store_true', help='Run training before evaluation')
   parser.add_argument(
       '--checkpoint-dir',
       type=str,
@@ -217,7 +276,7 @@ if __name__ == '__main__':
       help='Directory to save/load checkpoints (default: GCS_BUCKET/checkpoints-v6e-16-tpu-emb-24)')
 
   args = parser.parse_args()
-  
+
   CHECKPOINT_DIR = args.checkpoint_dir
 
   with strategy.scope():
@@ -225,7 +284,8 @@ if __name__ == '__main__':
     # model.compile(optimizer=optimizer)
 
     checkpoint = tf.train.Checkpoint(optimizer=optimizer, model=model)
-    manager = tf.train.CheckpointManager(checkpoint, CHECKPOINT_DIR, max_to_keep=3)
+    manager = tf.train.CheckpointManager(
+        checkpoint, CHECKPOINT_DIR, max_to_keep=3)
     if manager.latest_checkpoint:
       checkpoint.restore(manager.latest_checkpoint).expect_partial()
       print(f'Restored from {manager.latest_checkpoint}')
@@ -236,7 +296,14 @@ if __name__ == '__main__':
 
   if args.training:
     print('Starting training...')
-    model.fit(dist_train_ds, steps_per_epoch=10, epochs=10)
+    # Instantiate the throughput callback
+    throughput_callback = ThroughputCallback(global_batch_size=GLOBAL_BATCH_SIZE)
+    # Pass the callback to model.fit
+    model.fit(
+        dist_train_ds,
+        steps_per_epoch=10,
+        epochs=10,
+        callbacks=[throughput_callback])
     ckpt_path = manager.save()
     print(f'Checkpoint saved at: {ckpt_path}')
 
