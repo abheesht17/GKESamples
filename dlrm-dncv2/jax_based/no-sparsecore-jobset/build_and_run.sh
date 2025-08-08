@@ -39,24 +39,40 @@ export REPLICATED_JOB_NAME="dlrm-job"
 
 # Set YAML Template and Job Name based on the selected configuration
 case $CONFIG in
-    16) 
+    16)
+        export YAML_FILE="jobset_v6e_16_gcsfuse.yaml"
+        export JOB_NAME="jax-v6e-16-dlrm-jobset-no-sc"
+        ;;
+    32)
+        export YAML_FILE="jobset_v6e_32_gcsfuse.yaml"
+        export JOB_NAME="jax-v6e-32-dlrm-jobset-no-sc"
+        ;;
+    64)
+        export YAML_FILE="jobset_v6e_64_gcsfuse.yaml"
+        export JOB_NAME="jax-v6e-64-dlrm-jobset-no-sc"
+        ;;
+    128)
+        export YAML_FILE="jobset_v6e_128_gcsfuse.yaml"
+        export JOB_NAME="jax-v6e-128-dlrm-jobset-no-sc"
+        ;;
+    v5e-16)
         export YAML_FILE="jobset_v5e_16_gcsfuse.yaml"
-        export JOB_NAME="jax-v5e-16-dlrm-jobset"
+        export JOB_NAME="jax-v5e-16-dlrm-jobset-no-sc"
         ;;
-    32) 
+    v5e-32)
         export YAML_FILE="jobset_v5e_32_gcsfuse.yaml"
-        export JOB_NAME="jax-v5e-32-dlrm-jobset"
+        export JOB_NAME="jax-v5e-32-dlrm-jobset-no-sc"
         ;;
-    64) 
+    v5e-64)
         export YAML_FILE="jobset_v5e_64_gcsfuse.yaml"
-        export JOB_NAME="jax-v5e-64-dlrm-jobset"
+        export JOB_NAME="jax-v5e-64-dlrm-jobset-no-sc"
         ;;
-    128) 
+    v5e-128)
         export YAML_FILE="jobset_v5e_128_gcsfuse.yaml"
-        export JOB_NAME="jax-v5e-128-dlrm-jobset"
+        export JOB_NAME="jax-v5e-128-dlrm-jobset-no-sc"
         ;;
     *)
-        echo -e "${ORANGE}Error: Invalid configuration '$CONFIG'. Choose from {16|32|64|128}.${NC}"
+        echo -e "${ORANGE}Error: Invalid configuration '$CONFIG'. Choose from v6e-{16|32|64|128} or v5e-{16|32|64|128}.${NC}"
         exit 1
         ;;
 esac

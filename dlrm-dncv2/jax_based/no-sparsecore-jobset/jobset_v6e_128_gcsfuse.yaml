@@ -24,8 +24,8 @@ spec:
               dnsPolicy: ClusterFirstWithHostNet
               serviceAccountName: chavoshi-dlrm-job-sa
               nodeSelector:
-                cloud.google.com/gke-tpu-accelerator: tpu-v5p-slice
-                cloud.google.com/gke-tpu-topology: 4x4x8
+                cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
+                cloud.google.com/gke-tpu-topology: 8x16
               tolerations:
                 - key: google.com/tpu
                   operator: Equal
@@ -51,21 +51,18 @@ spec:
                   command: ["python", "/app/recml/inference/models/jax/DLRM_DCNv2/dlrm_main.py"]
                   args:
                     - --learning_rate=0.0034
-                    - --batch_size=64
-                    - --embedding_size=8
-                    - --embedding_threshold=21000
+                    - --batch_size=540672
+                    - --embedding_size=128
                     - --model_dir=/gcs/benchmark/model-output/${JOB_NAME}
                     - --file_pattern=/gcs/mlperf-dataset/criteo_merge_balanced_4224/train-*
                     - --num_steps=28000
                     - --save_checkpoint_interval=29000
                     - --restore_checkpoint=true
-                    # - --eval_interval=1500
-                    # - --eval_file_pattern=/gcs/mlperf-dataset/criteo_merge_balanced_4224/train-*
-                    # - --eval_steps=660
+                    - --eval_interval=1500
+                    - --eval_file_pattern=/gcs/mlperf-dataset/criteo_merge_balanced_4224/train-*
+                    - --eval_steps=660
                     - --mode=train
                     - --logging_interval=1500
-                    - --max_ids_per_partition=8192
-                    - --max_unique_ids_per_partition=4096
                   volumeMounts:
                     - name: gcs-fuse-volume
                       mountPath: /gcs
@@ -77,8 +74,6 @@ spec:
                       value: "tpu"
                     - name: ENABLE_PJRT_COMPATIBILITY
                       value: "true"
-                    - name: NUM_SPARSE_CORES
-                      value: "4"
                     - name: LIBTPU_INIT_ARGS
                       value: ""
                     - name: XLA_FLAGS
@@ -88,8 +83,8 @@ spec:
                   resources:
                     limits:
                       google.com/tpu: "4"
-                      memory: "100Gi"
+                      ephemeral-storage: "20Gi"
                     requests:
                       google.com/tpu: "4"
-                      memory: "100Gi"
+                      ephemeral-storage: "20Gi"
               restartPolicy: Never
