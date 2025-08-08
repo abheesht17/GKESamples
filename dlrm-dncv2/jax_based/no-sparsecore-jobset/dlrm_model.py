@@ -13,18 +13,11 @@
 # limitations under the License.
 """DLRM DCN v2 model."""
 
-from typing import List
+from typing import List, Dict
 
 from flax import linen as nn
 import jax
 import jax.numpy as jnp
-from jax_tpu_embedding.sparsecore.lib.flax import embed
-from jax_tpu_embedding.sparsecore.lib.nn import embedding
-from jax_tpu_embedding.sparsecore.lib.nn import embedding_spec
-
-
-shard_map = jax.experimental.shard_map.shard_map
-Nested = embedding.Nested
 
 
 def uniform_init(bound: float):
@@ -41,27 +34,19 @@ def uniform_init(bound: float):
 
 class DLRMDCNV2(nn.Module):
   """DLRM DCN v2 model."""
-  feature_specs: Nested[embedding_spec.FeatureSpec]
-  mesh: jax.sharding.Mesh
-  sharding_axis: str
-  global_batch_size: int
   vocab_sizes: List[int]
   embedding_size: int
   bottom_mlp_dims: List[int]
+  global_batch_size: int
   top_mlp_dims = [1024, 1024, 512, 256, 1]
   dcn_layers: int = 3
   projection_dim: int = 512
 
   def setup(self):
-    self.dense_embs = [
-        nn.Embed(self.vocab_sizes[i], self.embedding_size)
-        for i in range(len(self.vocab_sizes))
+    self.embedding_layers = [
+        nn.Embed(vocab_size, self.embedding_size)
+        for vocab_size in self.vocab_sizes
     ]
-    self.sparse_emb = embed.SparseCoreEmbed(
-        feature_specs=self.feature_specs,
-        mesh=self.mesh,
-        sharding_axis=self.sharding_axis,
-    )
 
   @nn.remat
   def bottom_mlp(self, x):
@@ -126,40 +111,24 @@ class DLRMDCNV2(nn.Module):
 
   @nn.compact
   def __call__(
-      self, dense_features, dense_lookups, embedding_lookups
+      self, dense_features: jax.Array, sparse_features: Dict[str, jax.Array]
   ):
     dense_outputs = self.bottom_mlp(dense_features)
-    processed_dense_lookups = []
-    for key, value in dense_lookups.items():
-        embeddings = self.dense_embs[int(key)](value)
+
+    embedding_outputs = []
+    for i, (key, value) in enumerate(sparse_features.items()):
+        embeddings = self.embedding_layers[i](value)
         embeddings = jnp.sum(embeddings, axis=-2)
-        processed_dense_lookups.append(embeddings)
+        embedding_outputs.append(embeddings)
 
-    if processed_dense_lookups:
-        stacked_dense_embeddings = jnp.stack(processed_dense_lookups, axis=1)
-    else:
-        stacked_dense_embeddings = jnp.empty((self.global_batch_size, 0, self.embedding_size))
+    stacked_embeddings = jnp.stack(embedding_outputs, axis=1)
 
-    dense_embeddings = stacked_dense_embeddings
-
-    sparse_embeddings = self.sparse_emb(embedding_lookups)
-    sparse_embeddings = jax.tree.flatten(sparse_embeddings)
-    concatenated_embeddings = jnp.concatenate(sparse_embeddings[0], axis=1)
     interaction_args = jax.lax.concatenate(
         [
             dense_outputs.reshape(
                 (self.global_batch_size, 1, self.embedding_size)
             ),
-            concatenated_embeddings.reshape((
-                self.global_batch_size,
-                26 - len(dense_lookups),
-                self.embedding_size,
-            )),
-            dense_embeddings.reshape((
-                self.global_batch_size,
-                len(dense_lookups.keys()),
-                self.embedding_size,
-            )),
+            stacked_embeddings,
         ],
         dimension=1,
     )
