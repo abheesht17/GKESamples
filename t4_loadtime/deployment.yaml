@@ -3,7 +3,7 @@ kind: Deployment
 metadata:
   name: gstreamer-test
 spec:
-  replicas: 8
+  replicas: 17
   selector:
     matchLabels:
       app: gstreamer-test
@@ -12,8 +12,9 @@ spec:
       labels:
         app: gstreamer-test
     spec:
+      serviceAccountName: gstreamer-sa
       nodeSelector:
-        cloud.google.com/gke-nodepool: t4-timesharing-pool
+        cloud.google.com/gke-nodepool: t4-timesharing-pool-custom
       containers:
       - name: ui-streamer
         image: ${IMAGE_TAG}

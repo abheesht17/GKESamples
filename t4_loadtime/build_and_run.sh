@@ -1,4 +1,5 @@
 #!/bin/bash
+cd /usr/local/google/home/chavoshi/GKESamples/t4_loadtime
 set -e # Exit immediately if a command exits with a non-zero status.
 
 # --- Step 1: Define Environment Variables ---
@@ -10,11 +11,16 @@ export CLUSTER_NAME="gpu-repro-cluster-west1b"
 export AR_REPO="gpu-repro-repo" # Name for your Artifact Registry repo
 export IMAGE_NAME="gstreamer-repro"
 export IMAGE_TAG="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}/${IMAGE_NAME}:latest"
+export NODE_POOL_NAME="t4-timesharing-pool"
 
 echo "  Project: ${PROJECT_ID}"
 echo "  Cluster: ${CLUSTER_NAME} in ${ZONE}"
 echo "  Image Tag: ${IMAGE_TAG}"
 echo ""
+
+echo "  Deleting existing deployment (if it exists)..."
+kubectl delete deployment gstreamer-test  --grace-period=0 --force --ignore-not-found=true
+
 
 # --- Step 2: Check for and Create Artifact Registry Repository ---
 echo "▶️ Checking for Artifact Registry repository '${AR_REPO}'..."
@@ -51,8 +57,6 @@ echo ""
 echo "▶️ Deploying to GKE cluster..."
 
 # --- NEW COMMAND ADDED HERE ---
-echo "  Deleting existing deployment (if it exists)..."
-kubectl delete deployment gstreamer-test --ignore-not-found=true
 
 echo "  Applying new deployment..."
 envsubst < deployment.yaml | kubectl apply -f -
