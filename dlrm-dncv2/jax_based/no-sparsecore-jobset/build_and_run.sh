@@ -39,19 +39,19 @@ export REPLICATED_JOB_NAME="dlrm-job"
 
 # Set YAML Template and Job Name based on the selected configuration
 case $CONFIG in
-    16)
+    v6e-16)
         export YAML_FILE="jobset_v6e_16_gcsfuse.yaml"
         export JOB_NAME="jax-v6e-16-dlrm-jobset-no-sc"
         ;;
-    32)
+    v6e-32)
         export YAML_FILE="jobset_v6e_32_gcsfuse.yaml"
         export JOB_NAME="jax-v6e-32-dlrm-jobset-no-sc"
         ;;
-    64)
+    v6e-64)
         export YAML_FILE="jobset_v6e_64_gcsfuse.yaml"
         export JOB_NAME="jax-v6e-64-dlrm-jobset-no-sc"
         ;;
-    128)
+    v6e-128)
         export YAML_FILE="jobset_v6e_128_gcsfuse.yaml"
         export JOB_NAME="jax-v6e-128-dlrm-jobset-no-sc"
         ;;
