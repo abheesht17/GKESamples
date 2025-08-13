@@ -18,7 +18,7 @@ fi
 
 # After potentially shifting, we require at least one argument for the configuration.
 if [ "$#" -lt 1 ]; then
-    echo -e "${ORANGE}Usage: $0 [prod] {16 | 32 | 64 | 128 | 256 | v5p-16 | v5p-32 | v5p-64 | v5p-128} [--rebuild]${NC}"
+    echo -e "${ORANGE}Error: Invalid configuration '$CONFIG'. Choose from v6e-{16|32|64|128} or v5p-{16|32|64|128}.${NC}"
     exit 1
 fi
 
@@ -59,23 +59,23 @@ export REPLICATED_JOB_NAME="dlrm-job"
 
 # Set YAML Template and Job Name based on the selected configuration
 case $CONFIG in
-    16)
+    v6e-16)
         export YAML_FILE="jobset_v6e_16_gcsfuse.yaml"
         export JOB_NAME="jax-16-dlrm-jobset"
         ;;
-    32)
+    v6e-32)
         export YAML_FILE="jobset_v6e_32_gcsfuse.yaml"
         export JOB_NAME="jax-32-dlrm-jobset"
         ;;
-    64)
+    v6e-64)
         export YAML_FILE="jobset_v6e_64_gcsfuse.yaml"
         export JOB_NAME="jax-64-dlrm-jobset"
         ;;
-    128)
+    v6e-128)
         export YAML_FILE="jobset_v6e_128_gcsfuse.yaml"
         export JOB_NAME="jax-128-dlrm-jobset"
         ;;
-    256)
+    v6e-256)
         export YAML_FILE="jobset_v6e_256_gcsfuse.yaml"
         export JOB_NAME="jax-256-dlrm-jobset"
         ;;

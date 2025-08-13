@@ -279,6 +279,14 @@ def train_loop(
   )
 
   _, dense_features, sparse_features = next(producer)
+  info(
+      "Model summary:\n%s",
+      model.tabulate(
+          jax.random.key(42),
+          dense_features,
+          sparse_features,
+      ),
+  )
   params = model.init(
       jax.random.key(42), dense_features, sparse_features
   )

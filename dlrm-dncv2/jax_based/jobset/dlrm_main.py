@@ -385,9 +385,31 @@ def train_loop(
   )
 
   _, dense_features, dense_lookups, embedding_lookups = next(producer)
+  # The following tabulate call fails because it cannot handle
+  # AdagradSlotVariables.
+  # info(
+  #     "Model summary:\n%s",
+  #     model.tabulate(
+  #         jax.random.key(42),
+  #         dense_features,
+  #         dense_lookups,
+  #         embedding_lookups,
+  #     ),
+  # )
   params = model.init(
       jax.random.key(42), dense_features, dense_lookups, embedding_lookups
   )
+
+  # Calculate and print model summary manually.
+  param_leaves = jax.tree_util.tree_leaves(params)
+  total_params = sum(p.size for p in param_leaves)
+  total_size_bytes = sum(p.size * p.dtype.itemsize for p in param_leaves)
+  info(
+      "Model Summary: Total Parameters: %s (%.2f GB)",
+      f"{total_params:,}",
+      total_size_bytes / (1024**3),
+  )
+
   tx = embed_optimizer.create_optimizer_for_sc_model(
       params, optax.adagrad(learning_rate=_LEARNING_RATE.value)
   )

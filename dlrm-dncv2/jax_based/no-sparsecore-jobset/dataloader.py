@@ -89,6 +89,7 @@ class CriteoDataLoader:
       num_dense_features: int,
       vocab_sizes: List[int],
       multi_hot_sizes: List[int],
+      embedding_threshold: int = 21000,
       shuffle_buffer: int = 256,
       prefetch_size: int = 256,
   ):
@@ -98,6 +99,9 @@ class CriteoDataLoader:
     self._num_dense_features = num_dense_features
     self._vocab_sizes = vocab_sizes
     self._multi_hot_sizes = multi_hot_sizes
+    # Embedding threshold is used to determine whether a feature should be
+    # placed on TensorCore or SparseCore.
+    self._embedding_threshold = embedding_threshold
     self._shuffle_buffer = shuffle_buffer
     self._prefetch_size = prefetch_size
     self._cached_dummy_data = None

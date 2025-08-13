@@ -122,7 +122,6 @@ class DLRMDCNV2(nn.Module):
         embedding_outputs.append(embeddings)
 
     stacked_embeddings = jnp.stack(embedding_outputs, axis=1)
-
     interaction_args = jax.lax.concatenate(
         [
             dense_outputs.reshape(
@@ -138,4 +137,3 @@ class DLRMDCNV2(nn.Module):
     predictions = jnp.reshape(predictions, (-1,))
 
     return predictions
-
