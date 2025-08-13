@@ -52,7 +52,7 @@ spec:
                   args:
                     - --learning_rate=0.0034
                     - --batch_size=101376
-                    - --embedding_size=32
+                    - --embedding_size=8
                     - --model_dir=/gcs/benchmark/model-output/${JOB_NAME}
                     - --file_pattern=/gcs/mlperf-dataset/criteo_merge_balanced_4224/train-*
                     - --num_steps=28000
