@@ -11,7 +11,7 @@ export CLUSTER_NAME="gpu-repro-cluster-west1b"
 export AR_REPO="gpu-repro-repo" # Name for your Artifact Registry repo
 export IMAGE_NAME="gstreamer-repro"
 export IMAGE_TAG="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}/${IMAGE_NAME}:latest"
-export NODE_POOL_NAME="t4-timesharing-pool"
+export NODE_POOL_NAME="t4-r550-driver-pool-32"
 
 echo "  Project: ${PROJECT_ID}"
 echo "  Cluster: ${CLUSTER_NAME} in ${ZONE}"

@@ -3,7 +3,7 @@ kind: Deployment
 metadata:
   name: gstreamer-test
 spec:
-  replicas: 17
+  replicas: 24
   selector:
     matchLabels:
       app: gstreamer-test
@@ -14,7 +14,11 @@ spec:
     spec:
       serviceAccountName: gstreamer-sa
       nodeSelector:
-        cloud.google.com/gke-nodepool: t4-timesharing-pool-custom
+        cloud.google.com/gke-nodepool: t4-r550-driver-pool-32
+      tolerations:
+      - key: "nvidia.com/gpu"
+        operator: "Exists"
+        effect: "NoSchedule"
       containers:
       - name: ui-streamer
         image: ${IMAGE_TAG}
