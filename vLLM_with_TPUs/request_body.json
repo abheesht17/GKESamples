@@ -1,0 +1,6 @@
+{
+    "model": "meta-llama/Llama-3.1-70B",
+    "prompt": "Write a story about san francisco",
+    "max_tokens": 1000,
+    "temperature": 0
+}
