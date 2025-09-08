@@ -4,8 +4,8 @@ set -euo pipefail
 # --- Configuration ---
 export PROJECT_ID="gemle-gke-dev"
 export CLUSTER_NAME="chavoshi-inference-gateway-ext"
-export ZONE="us-west2-b"
-export REGION="us-west2"
+export ZONE="us-east4-b"
+export REGION="us-east4"
 export MACHINE_TYPE="n1-standard-8"
 export TPU_NODE_POOL_NAME="tpu-8"
 export TPU_MACHINE_TYPE="ct6e-standard-8t"
@@ -13,7 +13,11 @@ export GS_BUCKET="chavoshi-gkegmle"
 export KSA_NAME="vllm-ksa"
 export HF_SECRET_NAME="hf-secret"
 # Replace with your actual Hugging Face token before running
-export HF_TOKEN_PLACEHOLDER="HF_TOKEN"
+export HF_TOKEN_PLACEHOLDER=""
+export PROXY_SUBNET_NAME="proxy-only-subnet-${REGION}"
+# Note: This range should not overlap with other subnets in the 'default' VPC
+export PROXY_SUBNET_RANGE="192.168.253.0/24"
+
 
 # --- Helper Functions ---
 info() {
@@ -33,6 +37,20 @@ error() {
 
 info "Setting active project to $PROJECT_ID"
 gcloud config set project "$PROJECT_ID"
+
+info "Checking for proxy-only subnet '$PROXY_SUBNET_NAME' in region '$REGION'..."
+if ! gcloud compute networks subnets describe "$PROXY_SUBNET_NAME" --region "$REGION" --project "$PROJECT_ID" &>/dev/null; then
+    info "Proxy-only subnet not found. Creating it now..."
+    gcloud compute networks subnets create "$PROXY_SUBNET_NAME" \
+        --purpose=REGIONAL_MANAGED_PROXY \
+        --role=ACTIVE \
+        --region="$REGION" \
+        --network=default \
+        --range="$PROXY_SUBNET_RANGE" \
+        --project="$PROJECT_ID"
+else
+    info "Proxy-only subnet '$PROXY_SUBNET_NAME' already exists."
+fi
 
 info "Checking if GKE cluster '$CLUSTER_NAME' exists in zone '$ZONE'வதற்காக..."
 if ! gcloud container clusters describe "$CLUSTER_NAME" --zone "$ZONE" --project "$PROJECT_ID" &>/dev/null; then
@@ -65,8 +83,12 @@ else
     info "Service Account '$KSA_NAME' already exists."
 fi
 
-info "Granting Service Account IAM permissions for GCS bucket '$GS_BUCKET'வதற்காக..."
-PROJECT_NUMBER=$(gcloud projects describe ${PROJECT_ID} --format="value(projectNumber)")
+info "Granting Service Account IAM permissions for GCS bucket '$GS_BUCKET'..."
+PROJECT_NUMBER_CMD="gcloud projects describe ${PROJECT_ID} --format='value(projectNumber)'"
+PROJECT_NUMBER=$($PROJECT_NUMBER_CMD)
+if [ -z "$PROJECT_NUMBER" ]; then
+    error "Failed to get project number for project '$PROJECT_ID'. Please check your gcloud configuration."
+fi
 gcloud storage buckets add-iam-policy-binding "gs://${GS_BUCKET}" \
   --member "principal://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${PROJECT_ID}.svc.id.goog/subject/ns/default/sa/${KSA_NAME}" \
   --role "roles/storage.objectUser"
