@@ -13,7 +13,7 @@
 # limitations under the License.
 """DLRM DCN v2 model."""
 
-from typing import Any, List # <-- Make sure 'Any' is imported
+from typing import List
 
 from flax import linen as nn
 import jax
@@ -51,11 +51,10 @@ class DLRMDCNV2(nn.Module):
   top_mlp_dims = [1024, 1024, 512, 256, 1]
   dcn_layers: int = 3
   projection_dim: int = 512
-  dtype: Any = jnp.float32  # <-- 1. ADD a configurable dtype for the model
+  dtype: Any = jnp.float32
 
   def setup(self):
     self.dense_embs = [
-        # <-- 2. Use the specified dtype for dense embeddings
         nn.Embed(self.vocab_sizes[i], self.embedding_size, dtype=self.dtype)
         for i in range(len(self.vocab_sizes))
     ]
@@ -74,7 +73,7 @@ class DLRMDCNV2(nn.Module):
           dim,
           kernel_init=uniform_init(bound),
           bias_init=uniform_init(bound),
-          dtype=self.dtype,  # <-- 3. Use the specified dtype in Dense layers
+          dtype=self.dtype,
       )(x)
       x = nn.relu(x)
     return x
@@ -88,7 +87,7 @@ class DLRMDCNV2(nn.Module):
           dim,
           kernel_init=uniform_init(bound),
           bias_init=uniform_init(bound),
-          dtype=self.dtype,  # <-- 4. Use the specified dtype in Dense layers
+          dtype=self.dtype,
       )(x)
       x = nn.relu(x)
       previous_dim = dim
@@ -98,7 +97,7 @@ class DLRMDCNV2(nn.Module):
         self.top_mlp_dims[-1],
         kernel_init=uniform_init(bound),
         bias_init=uniform_init(bound),
-        dtype=self.dtype,  # <-- 5. Use the specified dtype in Dense layers
+        dtype=self.dtype,
     )(x)
     x = nn.sigmoid(x)
     return x
@@ -113,15 +112,15 @@ class DLRMDCNV2(nn.Module):
           f'u_kernel_{i}',
           nn.initializers.xavier_normal(),
           (input_dim, self.projection_dim),
-          self.dtype  # <-- 6. Specify dtype for DCN parameters
+          self.dtype
       )
       v_kernel = self.param(
           f'v_kernel_{i}',
           nn.initializers.xavier_normal(),
           (self.projection_dim, input_dim),
-          self.dtype  # <-- 7. Specify dtype for DCN parameters
+          self.dtype
       )
-      bias = self.param(f'bias_{i}', nn.initializers.zeros, (input_dim,), self.dtype) # <-- 8. Specify dtype for DCN parameters
+      bias = self.param(f'bias_{i}', nn.initializers.zeros, (input_dim,), self.dtype)
 
       u_output = jnp.matmul(xl, u_kernel)
       v_output = jnp.matmul(u_output, v_kernel)
