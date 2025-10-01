@@ -1,0 +1,95 @@
+apiVersion: jobset.x-k8s.io/v1alpha2
+kind: JobSet
+metadata:
+  name: ${JOB_NAME}
+  annotations:
+    alpha.jobset.sigs.k8s.io/exclusive-topology: cloud.google.com/gke-nodepool
+spec:
+  failurePolicy:
+    maxRestarts: 1
+  replicatedJobs:
+    - name: dlrm-job
+      replicas: 1
+      template:
+        spec:
+          backoffLimit: 0
+          completions: 32
+          parallelism: 32
+          template:
+            metadata:
+              annotations:
+                gke-gcsfuse/volumes: "true"
+            spec:
+              hostNetwork: true
+              dnsPolicy: ClusterFirstWithHostNet
+              serviceAccountName: chavoshi-dlrm-job-sa
+              nodeSelector:
+                cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
+                cloud.google.com/gke-tpu-topology: 8x16
+              tolerations:
+                - key: google.com/tpu
+                  operator: Equal
+                  value: present
+                  effect: NoSchedule
+              volumes:
+                - name: gcs-fuse-volume
+                  csi:
+                    driver: gcsfuse.csi.storage.gke.io
+                    volumeAttributes:
+                      bucketName: ${GCS_BUCKET_NAME}
+                      mountOptions: "implicit-dirs,file-cache:max-size-mb:1024,file-cache:enable-parallel-downloads:true,read_ahead_kb=1024,metadata-cache:ttl-secs:-1"
+              containers:
+                - name: jax-dlrm
+                  image: ${JAX_IMAGE_URL}
+                  imagePullPolicy: Always
+                  ports:
+                  - containerPort: 8471
+                  - containerPort: 8080
+                  - containerPort: 8431
+                  securityContext:
+                    privileged: true
+                  command: ["python", "/app/recml/inference/models/jax/DLRM_DCNv2/dlrm_main.py"]
+                  args:
+                    - --learning_rate=0.0034
+                    - --batch_size=101376
+                    - --embedding_size=128
+                    - --embedding_threshold=21000
+                    - --model_dir=/gcs/benchmark/model-output/${JOB_NAME}
+                    - --file_pattern=/gcs/mlperf-dataset/criteo_merge_balanced_4224/train-*
+                    - --num_steps=28000
+                    - --save_checkpoint_interval=28000
+                    - --restore_checkpoint=true
+                    # - --eval_interval=1500
+                    # - --eval_file_pattern=/gcs/mlperf-dataset/criteo_merge_balanced_4224/train-*
+                    # - --eval_steps=660
+                    - --mode=train
+                    - --logging_interval=1000
+                    - --max_ids_per_partition=8192
+                    - --max_unique_ids_per_partition=4096
+                  volumeMounts:
+                    - name: gcs-fuse-volume
+                      mountPath: /gcs
+                      readOnly: false
+                  env:
+                    - name: MODEL_DIR
+                      value: "/gcs/benchmark/model-output/${JOB_NAME}"
+                    - name: JAX_PLATFORMS
+                      value: "tpu"
+                    - name: ENABLE_PJRT_COMPATIBILITY
+                      value: "true"
+                    - name: NUM_SPARSE_CORES
+                      value: "2"
+                    - name: LIBTPU_INIT_ARGS
+                      value: ""
+                    - name: XLA_FLAGS
+                      value: ""
+                    - name: TF_CPP_MIN_LOG_LEVEL
+                      value: "3"
+                  resources:
+                    limits:
+                      google.com/tpu: "4"
+                      ephemeral-storage: "20Gi"
+                    requests:
+                      google.com/tpu: "4"
+                      ephemeral-storage: "20Gi"
+              restartPolicy: Never
