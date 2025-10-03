@@ -242,12 +242,16 @@ class DLRMDataLoader:
     labels = feature_batch["clicked"]
 
     feature_weights = jax.tree_util.tree_map(
-        lambda x: np.array(np.ones_like(x, shape=x.shape, dtype=np.float32)),
+        lambda x: np.array(np.ones_like(x, shape=x.shape, dtype=jnp.bfloat16)),
         sparse_features,
+    )
+    # Explicitly cast sparse_features to jnp.int32 to avoid dtype 'E' error.
+    sparse_features_int32 = jax.tree_util.tree_map(
+        lambda x: x.astype(jnp.int32), sparse_features
     )
 
     processed_sparse = embedding.preprocess_sparse_dense_matmul_input(
-        sparse_features,
+        sparse_features_int32,
         feature_weights,
         self.feature_specs,
         self.mesh.local_mesh.size,
@@ -661,6 +665,7 @@ def main(argv):
       embedding_size=_EMBEDDING_SIZE.value,
       bottom_mlp_dims=[512, 256, _EMBEDDING_SIZE.value],
       vocab_sizes=VOCAB_SIZES,
+      dtype=jnp.bfloat16,
   )
 
   if _MODE.value == "train":

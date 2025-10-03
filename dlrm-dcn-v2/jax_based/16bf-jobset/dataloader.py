@@ -207,8 +207,9 @@ class CriteoDataLoader:
     sparse_features = {}
     for i, sparse_ft in enumerate(self.sparse_features):
       cat_ft_int64 = tf.io.decode_raw(parsed_features[sparse_ft], tf.int64)
-      cat_ft_int64 = tf.reshape(
-          cat_ft_int64,
+      cat_ft_int32 = tf.cast(cat_ft_int64, dtype=tf.int32)
+      cat_ft_int32 = tf.reshape(
+          cat_ft_int32,
           [
               batch_size,
               self._multi_hot_sizes[i],
@@ -217,11 +218,11 @@ class CriteoDataLoader:
 
       # TODO(b/396189671): Logic needed for PartialTPUEmbedding.
       # if self._vocab_sizes[i] > self._embedding_threshold:
-      #   sparse_features[str(i)] = tf.sparse.from_dense(cat_ft_int64)
+      #   sparse_features[str(i)] = tf.sparse.from_dense(cat_ft_int32)
       # else:
-      #   sparse_features[str(i)] = cat_ft_int64
+      #   sparse_features[str(i)] = cat_ft_int32
 
-      sparse_features[str(i)] = cat_ft_int64
+      sparse_features[str(i)] = cat_ft_int32
 
     return {
         'clicked': labels,

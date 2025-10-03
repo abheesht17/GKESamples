@@ -18,7 +18,7 @@ fi
 
 # After potentially shifting, we require at least one argument for the configuration.
 if [ "$#" -lt 1 ]; then
-    echo -e "${ORANGE}Error: Invalid configuration '$CONFIG'. Choose from v6e-{16|32|64|128} or v5p-{16|32|64|128}.${NC}"
+    echo -e "${ORANGE}Error: Invalid configuration '$CONFIG'. Choose from v6e-{16|32|64|128} or v5p-{16|32|64|128} with optional flag --rebuild.${NC}"
     exit 1
 fi
 
@@ -53,7 +53,7 @@ esac
 # Shared configuration for the JAX job
 export AR_REPO_NAME="tpu-repo"
 export IMAGE_TAG="latest"
-export JAX_IMAGE_NAME="dlrm-jax-sample"
+export JAX_IMAGE_NAME="dlrm-jax-16-sample"
 # The name of the replicatedJob inside the YAML, used for label selection.
 export REPLICATED_JOB_NAME="dlrm-job"
 
@@ -61,39 +61,39 @@ export REPLICATED_JOB_NAME="dlrm-job"
 case $CONFIG in
     v6e-16)
         export YAML_FILE="jobset_v6e_16_gcsfuse.yaml"
-        export JOB_NAME="jax-16-dlrm-jobset"
+        export JOB_NAME="jax-16-16b-dlrm-jobset"
         ;;
     v6e-32)
         export YAML_FILE="jobset_v6e_32_gcsfuse.yaml"
-        export JOB_NAME="jax-32-dlrm-jobset"
+        export JOB_NAME="jax-32-16b-dlrm-jobset"
         ;;
     v6e-64)
         export YAML_FILE="jobset_v6e_64_gcsfuse.yaml"
-        export JOB_NAME="jax-64-dlrm-jobset"
+        export JOB_NAME="jax-64-16b-dlrm-jobset"
         ;;
     v6e-128)
         export YAML_FILE="jobset_v6e_128_gcsfuse.yaml"
-        export JOB_NAME="jax-128-dlrm-jobset"
+        export JOB_NAME="jax-128-16b-dlrm-jobset"
         ;;
     v6e-256)
         export YAML_FILE="jobset_v6e_256_gcsfuse.yaml"
-        export JOB_NAME="jax-256-dlrm-jobset"
+        export JOB_NAME="jax-256-16b-dlrm-jobset"
         ;;
     v5p-16)
         export YAML_FILE="jobset_v5p_16_gcsfuse.yaml"
-        export JOB_NAME="jax-v5p-16-dlrm-jobset"
+        export JOB_NAME="jax-v5p-16-16b-dlrm-jobset"
         ;;
     v5p-32)
         export YAML_FILE="jobset_v5p_32_gcsfuse.yaml"
-        export JOB_NAME="jax-v5p-32-dlrm-jobset"
+        export JOB_NAME="jax-v5p-32-16b-dlrm-jobset"
         ;;
     v5p-64)
         export YAML_FILE="jobset_v5p_64_gcsfuse.yaml"
-        export JOB_NAME="jax-v5p-64-dlrm-jobset"
+        export JOB_NAME="jax-v5p-64-16b-dlrm-jobset"
         ;;
     v5p-128)
         export YAML_FILE="jobset_v5p_128_gcsfuse.yaml"
-        export JOB_NAME="jax-v5p-128-dlrm-jobset"
+        export JOB_NAME="jax-v5p-128-16b-dlrm-jobset"
         ;;
     *)
         echo -e "${ORANGE}Error: Invalid configuration '$CONFIG'. Choose from v6e-{16|32|64|128|256} or v5p-{16|32|64|128}.${NC}"

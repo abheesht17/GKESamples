@@ -13,7 +13,7 @@
 # limitations under the License.
 """DLRM DCN v2 model."""
 
-from typing import List
+from typing import Any, List
 
 from flax import linen as nn
 import jax
@@ -27,15 +27,14 @@ shard_map = jax.experimental.shard_map.shard_map
 Nested = embedding.Nested
 
 
-def uniform_init(bound: float):
-  def init(key, shape, dtype=jnp.float_):
+def uniform_init(bound: float, dtype=jnp.bfloat16):
+  def init(key, shape, dtype=dtype):
     return jax.random.uniform(
         key,
         shape=shape,
-        dtype=dtype,
         minval=-bound,
         maxval=bound
-    )
+    ).astype(dtype)
   return init
 
 

@@ -83,8 +83,8 @@ spec:
                       value: ""
                     - name: XLA_FLAGS
                       value: ""
-                    - name: TF_CPP_MIN_LOG_LEVEL
-                      value: "3"
+                    # - name: TF_CPP_MIN_LOG_LEVEL
+                    #   value: "3"
                   resources:
                     limits:
                       google.com/tpu: "4"
