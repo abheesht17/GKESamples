@@ -252,21 +252,14 @@ class CriteoDataLoader:
         dataset, buffer_size=32 * 1024 * 1024, num_parallel_reads=parallelism
     )
 
-    # The data is pre-batched to 4224, so we parse it with that batch size.
-    pre_batched_size = 4224
+    # Parse examples
     dataset = dataset.map(
-        lambda x: self._parse_example(x, pre_batched_size),
+        lambda x: self._parse_example(x, batch_size),
         num_parallel_calls=parallelism,
     )
 
-    # Unbatch the data to get a stream of individual examples.
-    dataset = dataset.unbatch()
-
     if self._params.is_training and self._shuffle_buffer > 0:
       dataset = dataset.shuffle(self._shuffle_buffer)
-
-    # Re-batch the data to the desired target batch size.
-    dataset = dataset.batch(batch_size, drop_remainder=self._params.is_training)
 
     if not self._params.is_training:
       def _mark_as_padding(features):
@@ -285,7 +278,9 @@ class CriteoDataLoader:
       padding_ds = padding_ds.map(_mark_as_padding).repeat(200)
       dataset = dataset.concatenate(padding_ds).take(660).cache().repeat()
 
-    dataset = dataset.prefetch(self._prefetch_size)
+    # dataset = dataset.prefetch(self._prefetch_size)
+
+    dataset = dataset.prefetch(buffer_size=2048)
     options = tf.data.Options()
     options.deterministic = False
     options.threading.private_threadpool_size = 96

@@ -245,9 +245,9 @@ class DLRMDataLoader:
         lambda x: np.array(np.ones_like(x, shape=x.shape, dtype=jnp.bfloat16)),
         sparse_features,
     )
-    # Explicitly cast sparse_features to jnp.int32 to avoid dtype 'E' error.
+    # Explicitly cast sparse_features to np.int32 to avoid dtype 'E' error.
     sparse_features_int32 = jax.tree_util.tree_map(
-        lambda x: x.astype(jnp.int32), sparse_features
+        lambda x: x.astype(np.int32), sparse_features
     )
 
     processed_sparse = embedding.preprocess_sparse_dense_matmul_input(
