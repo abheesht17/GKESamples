@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: dlrm-profiler-service
+spec:
+  selector:
+    app: dlrm-jax-trainer
+  ports:
+    - protocol: TCP
+      port: 9001
+      targetPort: 9001
+  type: ClusterIP
