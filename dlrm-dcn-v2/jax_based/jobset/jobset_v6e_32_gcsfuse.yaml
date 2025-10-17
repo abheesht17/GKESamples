@@ -37,7 +37,7 @@ spec:
                     driver: gcsfuse.csi.storage.gke.io
                     volumeAttributes:
                       bucketName: ${GCS_BUCKET_NAME}
-                      mountOptions: "implicit-dirs,file-cache:max-size-mb:1048576,file-cache:enable-parallel-downloads:true,read_ahead_kb=1024,metadata-cache:ttl-secs:-1"
+                      mountOptions: "implicit-dirs,file-cache:max-size-mb:1024,file-cache:enable-parallel-downloads:true,read_ahead_kb=1024,metadata-cache:ttl-secs:-1"
               containers:
                 - name: jax-dlrm
                   image: ${JAX_IMAGE_URL}
@@ -88,7 +88,6 @@ spec:
                   resources:
                     limits:
                       google.com/tpu: "4"
-                      # Request ephemeral storage
                       ephemeral-storage: "20Gi"
                     requests:
                       google.com/tpu: "4"

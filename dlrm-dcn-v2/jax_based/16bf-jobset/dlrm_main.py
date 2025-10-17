@@ -46,7 +46,7 @@ import orbax.checkpoint as ocp
 
 
 jax.distributed.initialize()
-jax.profiler.start_server(9002)
+jax.profiler.start_server(9999)
 partial = functools.partial
 info = logging.info
 shard_map = jax.experimental.shard_map.shard_map
@@ -242,12 +242,16 @@ class DLRMDataLoader:
     labels = feature_batch["clicked"]
 
     feature_weights = jax.tree_util.tree_map(
-        lambda x: np.array(np.ones_like(x, shape=x.shape, dtype=np.float32)),
+        lambda x: np.array(np.ones_like(x, shape=x.shape, dtype=jnp.bfloat16)),
         sparse_features,
+    )
+    # Explicitly cast sparse_features to np.int32 to avoid dtype 'E' error.
+    sparse_features_int32 = jax.tree_util.tree_map(
+        lambda x: x.astype(np.int32), sparse_features
     )
 
     processed_sparse = embedding.preprocess_sparse_dense_matmul_input(
-        sparse_features,
+        sparse_features_int32,
         feature_weights,
         self.feature_specs,
         self.mesh.local_mesh.size,
@@ -318,7 +322,6 @@ def eval_loop(
   info("Starting evaluation...")
   eval_metrics_collection = EvalMetrics.empty()
   step_count = 0
-  start_time = time.time()
   for batch in eval_producer:
     labels, dense_features, dense_lookups, embedding_lookups = batch
     eval_metrics_collection = eval_step_fn(
@@ -335,21 +338,14 @@ def eval_loop(
       info("Reached max evaluation steps (%d).", max_steps)
       break
   
-  end_time = time.time()
-  elapsed_time = end_time - start_time
-  total_examples = step_count * _BATCH_SIZE.value
-  throughput = total_examples / elapsed_time if elapsed_time > 0 else 0
-
   info("Finished evaluation after %d steps.", step_count)
   metrics_on_host = jax.device_get(eval_metrics_collection)
   loss_val = metrics_on_host.loss.compute()
   accuracy_val = metrics_on_host.accuracy.compute()
   info(
-      "Evaluation results: loss=%.5f, accuracy=%.5f, inference throughput=%.2f"
-      " examples/sec",
+      "Evaluation results: loss=%.5f, accuracy=%.5f",
       loss_val,
       accuracy_val,
-      throughput,
   )
 
 
@@ -490,12 +486,6 @@ def train_loop(
         global_sharding=global_sharding,
     )
 
-  # logdir = os.path.join(_MODEL_DIR.value, "jax_profiler")
-  # # Convert the local GCS FUSE path to a direct GCS path for the profiler.
-  # gcs_logdir = "gs://chavoshi-dlrm-dnc-v2-benchmark" + logdir.replace("/gcs/", "/", 1)
-  # jax.profiler.start_trace(gcs_logdir)
-  # info("JAX Profiling started...")
-
   for step in range(initial_step, _NUM_STEPS.value):
     with jax.profiler.StepTraceAnnotation("train_step", step_num=step):
       labels, dense_features, dense_lookups, embedding_lookups = next(producer)
@@ -537,9 +527,6 @@ def train_loop(
       checkpointer.save(
           current_step, args=ocp.args.PyTreeSave(ckpt_to_save), force=True
       )
-
-  # jax.profiler.stop_trace()
-  # info(f"JAX Profiling stopped. Logs saved to {logdir}")
 
   overall_end_time = time.time()
   total_training_time = overall_end_time - overall_start_time
@@ -678,6 +665,7 @@ def main(argv):
       embedding_size=_EMBEDDING_SIZE.value,
       bottom_mlp_dims=[512, 256, _EMBEDDING_SIZE.value],
       vocab_sizes=VOCAB_SIZES,
+      dtype=jnp.bfloat16,
   )
 
   if _MODE.value == "train":

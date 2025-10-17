@@ -19,6 +19,8 @@ spec:
             metadata:
               annotations:
                 gke-gcsfuse/volumes: "true"
+              labels:
+                app: "dlrm-jax-trainer"
             spec:
               hostNetwork: true
               dnsPolicy: ClusterFirstWithHostNet
@@ -46,6 +48,8 @@ spec:
                   - containerPort: 8471
                   - containerPort: 8080
                   - containerPort: 8431
+                  - containerPort: 9001
+                  - containerPort: 9002
                   securityContext:
                     privileged: true
                   command: ["python", "/app/recml/inference/models/jax/DLRM_DCNv2/dlrm_main.py"]
@@ -85,6 +89,8 @@ spec:
                       value: ""
                     - name: TF_CPP_MIN_LOG_LEVEL
                       value: "3"
+                    - name: JAX_ENABLE_HTTP_MONITORING
+                      value: "true"
                   resources:
                     limits:
                       google.com/tpu: "4"

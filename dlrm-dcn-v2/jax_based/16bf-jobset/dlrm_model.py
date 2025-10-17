@@ -13,7 +13,7 @@
 # limitations under the License.
 """DLRM DCN v2 model."""
 
-from typing import List
+from typing import Any, List
 
 from flax import linen as nn
 import jax
@@ -27,15 +27,14 @@ shard_map = jax.experimental.shard_map.shard_map
 Nested = embedding.Nested
 
 
-def uniform_init(bound: float):
-  def init(key, shape, dtype=jnp.float_):
+def uniform_init(bound: float, dtype=jnp.bfloat16):
+  def init(key, shape, dtype=dtype):
     return jax.random.uniform(
         key,
         shape=shape,
-        dtype=dtype,
         minval=-bound,
         maxval=bound
-    )
+    ).astype(dtype)
   return init
 
 
@@ -51,10 +50,11 @@ class DLRMDCNV2(nn.Module):
   top_mlp_dims = [1024, 1024, 512, 256, 1]
   dcn_layers: int = 3
   projection_dim: int = 512
+  dtype: Any = jnp.float32
 
   def setup(self):
     self.dense_embs = [
-        nn.Embed(self.vocab_sizes[i], self.embedding_size)
+        nn.Embed(self.vocab_sizes[i], self.embedding_size, dtype=self.dtype)
         for i in range(len(self.vocab_sizes))
     ]
     self.sparse_emb = embed.SparseCoreEmbed(
@@ -63,6 +63,7 @@ class DLRMDCNV2(nn.Module):
         sharding_axis=self.sharding_axis,
     )
 
+  @nn.remat
   def bottom_mlp(self, x):
     for dim in self.bottom_mlp_dims:
       previous_dim = x.shape[-1]
@@ -71,10 +72,12 @@ class DLRMDCNV2(nn.Module):
           dim,
           kernel_init=uniform_init(bound),
           bias_init=uniform_init(bound),
+          dtype=self.dtype,
       )(x)
       x = nn.relu(x)
     return x
 
+  @nn.remat
   def top_mlp(self, x):
     previous_dim = x.shape[-1]
     for dim in self.top_mlp_dims[:-1]:
@@ -83,6 +86,7 @@ class DLRMDCNV2(nn.Module):
           dim,
           kernel_init=uniform_init(bound),
           bias_init=uniform_init(bound),
+          dtype=self.dtype,
       )(x)
       x = nn.relu(x)
       previous_dim = dim
@@ -92,10 +96,12 @@ class DLRMDCNV2(nn.Module):
         self.top_mlp_dims[-1],
         kernel_init=uniform_init(bound),
         bias_init=uniform_init(bound),
+        dtype=self.dtype,
     )(x)
     x = nn.sigmoid(x)
     return x
 
+  @nn.remat
   def dcn_layer(self, x0):
     xl = x0
     input_dim = x0.shape[-1]
@@ -105,13 +111,15 @@ class DLRMDCNV2(nn.Module):
           f'u_kernel_{i}',
           nn.initializers.xavier_normal(),
           (input_dim, self.projection_dim),
+          self.dtype
       )
       v_kernel = self.param(
           f'v_kernel_{i}',
           nn.initializers.xavier_normal(),
           (self.projection_dim, input_dim),
+          self.dtype
       )
-      bias = self.param(f'bias_{i}', nn.initializers.zeros, (input_dim,))
+      bias = self.param(f'bias_{i}', nn.initializers.zeros, (input_dim,), self.dtype)
 
       u_output = jnp.matmul(xl, u_kernel)
       v_output = jnp.matmul(u_output, v_kernel)
@@ -135,7 +143,7 @@ class DLRMDCNV2(nn.Module):
     if processed_dense_lookups:
         stacked_dense_embeddings = jnp.stack(processed_dense_lookups, axis=1)
     else:
-        stacked_dense_embeddings = jnp.empty((self.global_batch_size, 0, self.embedding_size))
+        stacked_dense_embeddings = jnp.empty((self.global_batch_size, 0, self.embedding_size), dtype=self.dtype)
 
     dense_embeddings = stacked_dense_embeddings
 
@@ -165,5 +173,5 @@ class DLRMDCNV2(nn.Module):
     predictions = self.top_mlp(interaction_outputs)
     predictions = jnp.reshape(predictions, (-1,))
 
-    return predictions
-
+    # For mixed precision, cast final output to float32 for stable loss calculation
+    return predictions.astype(jnp.float32)

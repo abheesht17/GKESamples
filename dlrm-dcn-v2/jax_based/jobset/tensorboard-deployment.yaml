@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tensorboard-deployment
+  labels:
+    app: tensorboard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tensorboard
+  template:
+    metadata:
+      annotations:
+        gke-gcsfuse/volumes: "true"
+      labels:
+        app: tensorboard
+    spec:
+      serviceAccountName: chavoshi-dlrm-job-sa
+      containers:
+      - name: tensorboard
+        image: tensorflow/tensorflow:latest
+        command: ["/bin/sh", "-c"]
+        args:
+        - "pip install tensorboard tensorboard_plugin_profile cloud-tpu-profiler && sleep 15 && tensorboard --logdir /profile_data/benchmark/model-output/jax-16-dlrm-jobset --port 9002 --bind_all"
+        env:
+        - name: TPU_LOAD_LIBRARY
+          value: "0"
+        ports:
+        - containerPort: 9002
+        resources:
+          requests:
+            cpu: "4"
+            memory: "60Gi"
+          limits:
+            cpu: "4"
+            memory: "60Gi"
+        volumeMounts:
+        - name: gcs-fuse-volume
+          mountPath: /profile_data
+      volumes:
+      - name: gcs-fuse-volume
+        csi:
+          driver: gcsfuse.csi.storage.gke.io
+          volumeAttributes:
+            bucketName: chavoshi-dlrm-dnc-v2-benchmark
+            mountOptions: "implicit-dirs"
