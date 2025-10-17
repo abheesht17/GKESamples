@@ -2,11 +2,17 @@
 export PYTHONPATH=/recommenders/:/models/
 export TF_XLA_FLAGS='--tf_mlir_enable_mlir_bridge=true --tf_xla_sparse_core_disable_table_stacking=true --tf_mlir_enable_convert_control_to_data_outputs_pass=true --tf_mlir_enable_merge_control_flow_pass=true'
 
+# Dynamically generate TPU worker hostnames based on the environment variable
+TPU_WORKER_HOSTNAMES_LIST=""
+if [ -n "$TPU_WORKER_HOSTNAMES" ]; then
+  TPU_WORKER_HOSTNAMES_LIST="tpu: 'grpc://${TPU_WORKER_HOSTNAMES}'"
+fi
+
 TF_USE_LEGACY_KERAS=1 TPU_LOAD_LIBRARY=0 python3 ./models/official/recommendation/ranking/train.py  --mode=train     --model_dir=/tmp --params_override="
 runtime:
   distribution_strategy: tpu
   mixed_precision_dtype: 'mixed_bfloat16'
-  tpu: 'grpc://tf-16-dlrm-tfjob-worker-0.default.svc,grpc://tf-16-dlrm-tfjob-worker-1.default.svc,grpc://tf-16-dlrm-tfjob-worker-2.default.svc,grpc://tf-16-dlrm-tfjob-worker-3.default.svc' # This will be adapted by the TFJob name
+  ${TPU_WORKER_HOSTNAMES_LIST}
 task:
   use_synthetic_data: false
   use_tf_record_reader: true

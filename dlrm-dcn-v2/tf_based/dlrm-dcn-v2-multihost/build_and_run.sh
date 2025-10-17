@@ -7,79 +7,50 @@ GREEN='\033[0;32m'
 NC='\033[0m' # No Color
 
 ## ------------------- Argument Parsing ------------------- ##
-if [ "$#" -lt 2 ]; then
-    echo -e "${ORANGE}Usage: $0 {test | prod} {16-gcs | 16-gcsfuse | 128-gcs | 128-gcsfuse} [--rebuild]${NC}"
+if [ "$#" -lt 1 ]; then
+    echo -e "${ORANGE}Usage: $0 {v6e-16 | v6e-128} [--rebuild]${NC}"
     exit 1
 fi
 
-PROJECT_ALIAS=$1
-CONFIG=$2
+CONFIG=$1
 REBUILD_FLAG=false
 
-# Check for the --rebuild flag starting from the 3rd argument
-for arg in "${@:3}"; do
+# Check for the --rebuild flag starting from the 2nd argument
+for arg in "${@:2}"; do
     if [ "$arg" == "--rebuild" ]; then
         REBUILD_FLAG=true
     fi
 done
 
-## ------------------- Dynamic Configuration ------------------- ##
-echo -e "${GREEN}Setting up configuration for project alias: '${PROJECT_ALIAS}'${NC}"
-
-# Set project-specific variables based on the chosen alias
-case $PROJECT_ALIAS in
-    test)
-        export PROJECT_ID="tpu-vm-gke-testing"
-        export CLUSTER_REGION="us-central2"
-        export CLUSTER_NAME="chavoshi-test"
-        export AR_REGION="us-central2"
-        export GCS_BUCKET_NAME="chavoshi-checkpoints"
-        # Flag for regional cluster
-        export GKE_LOCATION_FLAG="--region ${CLUSTER_REGION}"
-        ;;
-    prod)
-        export PROJECT_ID="tpu-prod-env-one-vm"
-        export CLUSTER_REGION="us-east5"
-        export CLUSTER_ZONE="us-east5-b"
-        export CLUSTER_NAME="chavoshi-benchmark-us-east5b"
-        export AR_REGION="us-east5"
-        export GCS_BUCKET_NAME="chavoshi-dlrm-training"
-        # Flag for zonal cluster
-        export GKE_LOCATION_FLAG="--zone ${CLUSTER_ZONE}"
-        ;;
-    *)
-        echo -e "${ORANGE}Error: Invalid project alias '$PROJECT_ALIAS'. Choose 'test' or 'prod'.${NC}"
-        exit 1
-        ;;
-esac
+## ------------------- Static Configuration ------------------- ##
+export PROJECT_ID="tpu-prod-env-one-vm"
+export CLUSTER_REGION="us-east5"
+export CLUSTER_ZONE="us-east5-b"
+export CLUSTER_NAME="chavoshi-benchmark-us-east5b"
+export AR_REGION="us-east5"
+export GCS_BUCKET_NAME="chavoshi-dlrm-training"
+export GKE_LOCATION_FLAG="--zone ${CLUSTER_ZONE}"
+export GSA_NAME="dlrm-job-sa"
+export KSA_NAME="dlrm-job-sa"
 
 # Shared configuration
 export AR_REPO_NAME="tpu-repo"
 export IMAGE_TAG="latest"
-export MASTER_IMAGE_NAME="dlrm-master-timed"
-export WORKER_IMAGE_NAME="dlrm-worker-timed"
+export UNIFIED_IMAGE_NAME="tf-dlrm-unified"
 
 # Set YAML Template and Job Name based on the selected configuration
 case $CONFIG in
-    16-gcs)
-        export YAML_FILE="tfjob_v6e_16_gcs.yaml"
-        export TFJOB_NAME="tf-16-dlrm-tfjob-gcs"
-        ;;
-    16-gcsfuse)
+    v6e-16)
         export YAML_FILE="tfjob_v6e_16_gcsfuse.yaml"
         export TFJOB_NAME="tf-16-dlrm-tfjob-gcsfuse"
         ;;
-    128-gcs)
-        export YAML_FILE="tfjob_v6e_128_gcs.yaml"
-        export TFJOB_NAME="tf-128-dlrm-tfjob-gcs"
-        ;;
-    128-gcsfuse)
+    v6e-128)
         export YAML_FILE="tfjob_v6e_128_gcsfuse.yaml"
         export TFJOB_NAME="tf-128-dlrm-tfjob-gcsfuse"
         ;;
     *)
         echo -e "${ORANGE}Error: Invalid configuration '$CONFIG'.${NC}"
-        echo -e "${ORANGE}Please choose from: {16-gcs | 16-gcsfuse | 128-gcs | 128-gcsfuse}${NC}"
+        echo -e "${ORANGE}Please choose from: {v6e-16 | v6e-128}${NC}"
         exit 1
         ;;
 esac
@@ -87,8 +58,7 @@ esac
 echo -e "${GREEN}Running with job configuration: $CONFIG${NC}"
 
 ## ------------------- Define Image URLs ------------------- ##
-export MASTER_IMAGE_URL="${AR_REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO_NAME}/${MASTER_IMAGE_NAME}:${IMAGE_TAG}"
-export WORKER_IMAGE_URL="${AR_REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO_NAME}/${WORKER_IMAGE_NAME}:${IMAGE_TAG}"
+export UNIFIED_IMAGE_URL="${AR_REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO_NAME}/${UNIFIED_IMAGE_NAME}:${IMAGE_TAG}"
 
 ## ------------------- Authenticate & Configure ------------------- ##
 echo -e "${ORANGE}🔌 Connecting to GKE cluster: ${CLUSTER_NAME}...${NC}"
@@ -96,6 +66,34 @@ gcloud container clusters get-credentials ${CLUSTER_NAME} ${GKE_LOCATION_FLAG} -
 
 echo -e "${ORANGE}🔐 Configuring Docker...${NC}"
 gcloud auth configure-docker "${AR_REGION}-docker.pkg.dev"
+
+## ------------------- Service Account & IAM Setup ------------------- ##
+echo -e "${ORANGE}🛠️  Setting up Service Accounts and IAM permissions...${NC}"
+
+# Create Google Service Account (GSA)
+if ! gcloud iam service-accounts describe ${GSA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com --project=${PROJECT_ID} &> /dev/null; then
+    echo "Creating GSA '${GSA_NAME}'..."
+    gcloud iam service-accounts create ${GSA_NAME} --project=${PROJECT_ID}
+else
+    echo "✅ GSA '${GSA_NAME}' already exists."
+fi
+
+# Grant GSA permissions on the GCS bucket
+echo "Granting GSA permissions to GCS bucket '${GCS_BUCKET_NAME}'..."
+gsutil iam ch serviceAccount:${GSA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com:objectAdmin gs://${GCS_BUCKET_NAME}
+
+# Create Kubernetes Service Account (KSA) and bind to GSA for Workload Identity
+echo "Applying KSA configuration..."
+envsubst < service-account.yaml | kubectl apply -f -
+
+echo "Binding KSA to GSA for Workload Identity..."
+gcloud iam service-accounts add-iam-policy-binding ${GSA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com \
+    --role roles/iam.workloadIdentityUser \
+    --member "serviceAccount:${PROJECT_ID}.svc.id.goog[default/${KSA_NAME}]" \
+    --project ${PROJECT_ID}
+
+echo -e "${GREEN}✅ Service Account setup complete.${NC}"
+
 
 ## ------------------- Ensure Artifact Registry Repo Exists ------------------- ##
 echo -e "${ORANGE}🔎 Checking for Artifact Registry repository '${AR_REPO_NAME}'...${NC}"
@@ -114,17 +112,12 @@ fi
 
 ## ------------------- Conditional Docker Build & Push ------------------- ##
 if [ "$REBUILD_FLAG" = true ]; then
-    echo -e "${ORANGE}🚀 Rebuilding Docker images as requested...${NC}"
+    echo -e "${ORANGE}🚀 Rebuilding Docker image as requested...${NC}"
 
-    echo -e "${ORANGE}Building Master image...${NC}"
-    docker build -f master.Dockerfile -t ${MASTER_IMAGE_URL} .
-    docker push ${MASTER_IMAGE_URL}
-    echo -e "${GREEN}✅ Master image pushed.${NC}"
-
-    echo -e "${ORANGE}Building Worker image...${NC}"
-    docker build -f worker.Dockerfile -t ${WORKER_IMAGE_URL} .
-    docker push ${WORKER_IMAGE_URL}
-    echo -e "${GREEN}✅ Worker image pushed.${NC}"
+    echo -e "${ORANGE}Building unified image...${NC}"
+    docker build -f Dockerfile -t ${UNIFIED_IMAGE_URL} .
+    docker push ${UNIFIED_IMAGE_URL}
+    echo -e "${GREEN}✅ Unified image pushed.${NC}"
 else
     echo -e "${GREEN}Skipping Docker build. Using existing images.${NC}"
 fi
