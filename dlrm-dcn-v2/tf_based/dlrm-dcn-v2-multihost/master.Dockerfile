@@ -13,8 +13,8 @@ RUN pip install \
    --upgrade \
    pip
 RUN pip install --no-cache-dir tf-keras tensorflow-datasets pyyaml gin-config
-RUN pip install --no-cache-dir \
-   https://storage.googleapis.com/cloud-tpu-tpuvm-artifacts/tensorflow/tf-2.19.0/experimental/tensorflow_tpu-2.19.0-cp310-cp310-linux_x86_64.whl
+RUN pip uninstall -y tf-nightly
+RUN pip install --no-cache-dir tensorflow-tpu -f https://storage.googleapis.com/libtpu-tf-releases/index.html --force
 
 # Clone TFRS to a dir
 RUN git clone https://github.com/tensorflow/recommenders.git /recommenders
@@ -22,5 +22,7 @@ ENV PYTHONPATH "${PYTHONPATH}:/recommenders"
 RUN git clone https://github.com/ACW101/models.git /models
 ENV PYTHONPATH "${PYTHONPATH}:/models"
 
-COPY train.py /models/official/recommendation/ranking/train.py
-
+# Add entrypoint.sh
+ADD entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]
