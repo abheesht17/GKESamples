@@ -1,3 +1,4 @@
+# entrypoint.sh
 #!/bin/bash
 export PYTHONPATH=/recommenders/:/models/
 export TF_XLA_FLAGS='--tf_mlir_enable_mlir_bridge=true --tf_xla_sparse_core_disable_table_stacking=true --tf_mlir_enable_convert_control_to_data_outputs_pass=true --tf_mlir_enable_merge_control_flow_pass=true'
@@ -11,12 +12,13 @@ task:
   use_synthetic_data: false
   use_tf_record_reader: true
   train_data:
-    input_path: 'gs://zyc_dlrm/dataset/tb_tf_record_train_val/train/day_*/*'
-    global_batch_size: 32768
+    input_path: 'gs://trillium-datasets/criteo/train/day_*/*'
+    global_batch_size: 16384
     use_cached_data: true
   validation_data:
-    input_path: 'gs://zyc_dlrm/dataset/tb_tf_record_train_val/eval/day_*/*'
-    global_batch_size: 32768
+    input_path: 'gs://trillium-datasets/criteo/eval/day_*/*'
+    global_batch_size: 16384
+    use_cached_data: true
   model:
     num_dense_features: 13
     bottom_mlp: [512, 256, 128]
@@ -38,12 +40,12 @@ task:
     size_threshold: 0
     initialize_tables_on_host: true
 trainer:
-  train_steps: 1000
+  train_steps: 10000
   validation_interval: 1000
   validation_steps: 660
   summary_interval: 1000
   steps_per_loop: 1000
-  checkpoint_interval: 1000 
+  checkpoint_interval: 0
   optimizer_config:
     embedding_optimizer: 'Adagrad'
     dense_optimizer: 'Adagrad'

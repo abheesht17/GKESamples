@@ -12,15 +12,18 @@ RUN pip install \
    --no-cache-dir \
    --upgrade \
    pip
-RUN pip install --no-cache-dir tf-keras tensorflow-datasets pyyaml gin-config
+RUN pip install --no-cache-dir tf-keras==2.18.0 tensorflow-datasets pyyaml gin-config
 RUN pip uninstall -y tf-nightly
-RUN pip install --no-cache-dir tensorflow-tpu -f https://storage.googleapis.com/libtpu-tf-releases/index.html --force
+RUN pip install --no-cache-dir tensorflow-tpu==2.19.0rc0 -f https://storage.googleapis.com/libtpu-tf-releases/index.html --force
 
 # Clone TFRS to a dir
 RUN git clone https://github.com/tensorflow/recommenders.git /recommenders
 ENV PYTHONPATH "${PYTHONPATH}:/recommenders"
 RUN git clone https://github.com/ACW101/models.git /models
 ENV PYTHONPATH "${PYTHONPATH}:/models"
+
+# Overwrite the problematic ranking.py with the patched version
+COPY ranking.py /recommenders/tensorflow_recommenders/experimental/models/ranking.py
 
 # Add entrypoint.sh
 ADD entrypoint.sh /entrypoint.sh
