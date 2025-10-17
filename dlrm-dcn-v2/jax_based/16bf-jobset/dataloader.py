@@ -207,8 +207,9 @@ class CriteoDataLoader:
     sparse_features = {}
     for i, sparse_ft in enumerate(self.sparse_features):
       cat_ft_int64 = tf.io.decode_raw(parsed_features[sparse_ft], tf.int64)
-      cat_ft_int64 = tf.reshape(
-          cat_ft_int64,
+      cat_ft_int32 = tf.cast(cat_ft_int64, dtype=tf.int32)
+      cat_ft_int32 = tf.reshape(
+          cat_ft_int32,
           [
               batch_size,
               self._multi_hot_sizes[i],
@@ -217,11 +218,11 @@ class CriteoDataLoader:
 
       # TODO(b/396189671): Logic needed for PartialTPUEmbedding.
       # if self._vocab_sizes[i] > self._embedding_threshold:
-      #   sparse_features[str(i)] = tf.sparse.from_dense(cat_ft_int64)
+      #   sparse_features[str(i)] = tf.sparse.from_dense(cat_ft_int32)
       # else:
-      #   sparse_features[str(i)] = cat_ft_int64
+      #   sparse_features[str(i)] = cat_ft_int32
 
-      sparse_features[str(i)] = cat_ft_int64
+      sparse_features[str(i)] = cat_ft_int32
 
     return {
         'clicked': labels,
@@ -252,14 +253,21 @@ class CriteoDataLoader:
         dataset, buffer_size=32 * 1024 * 1024, num_parallel_reads=parallelism
     )
 
-    # Parse examples
+    # The data is pre-batched to 4224, so we parse it with that batch size.
+    pre_batched_size = 4224
     dataset = dataset.map(
-        lambda x: self._parse_example(x, batch_size),
+        lambda x: self._parse_example(x, pre_batched_size),
         num_parallel_calls=parallelism,
     )
 
+    # Unbatch the data to get a stream of individual examples.
+    dataset = dataset.unbatch()
+
     if self._params.is_training and self._shuffle_buffer > 0:
       dataset = dataset.shuffle(self._shuffle_buffer)
+
+    # Re-batch the data to the desired target batch size.
+    dataset = dataset.batch(batch_size, drop_remainder=self._params.is_training)
 
     if not self._params.is_training:
       def _mark_as_padding(features):
@@ -278,9 +286,7 @@ class CriteoDataLoader:
       padding_ds = padding_ds.map(_mark_as_padding).repeat(200)
       dataset = dataset.concatenate(padding_ds).take(660).cache().repeat()
 
-    # dataset = dataset.prefetch(self._prefetch_size)
-
-    dataset = dataset.prefetch(buffer_size=2048)
+    dataset = dataset.prefetch(self._prefetch_size)
     options = tf.data.Options()
     options.deterministic = False
     options.threading.private_threadpool_size = 96

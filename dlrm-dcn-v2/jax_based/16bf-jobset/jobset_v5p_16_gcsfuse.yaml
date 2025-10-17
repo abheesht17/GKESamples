@@ -19,15 +19,13 @@ spec:
             metadata:
               annotations:
                 gke-gcsfuse/volumes: "true"
-              labels:
-                app: "dlrm-jax-trainer"
             spec:
               hostNetwork: true
               dnsPolicy: ClusterFirstWithHostNet
               serviceAccountName: chavoshi-dlrm-job-sa
               nodeSelector:
-                cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
-                cloud.google.com/gke-tpu-topology: 4x4
+                cloud.google.com/gke-tpu-accelerator: tpu-v5p-slice
+                cloud.google.com/gke-tpu-topology: 2x2x4
               tolerations:
                 - key: google.com/tpu
                   operator: Equal
@@ -48,8 +46,6 @@ spec:
                   - containerPort: 8471
                   - containerPort: 8080
                   - containerPort: 8431
-                  - containerPort: 9001
-                  - containerPort: 9002
                   securityContext:
                     privileged: true
                   command: ["python", "/app/recml/inference/models/jax/DLRM_DCNv2/dlrm_main.py"]
@@ -82,15 +78,13 @@ spec:
                     - name: ENABLE_PJRT_COMPATIBILITY
                       value: "true"
                     - name: NUM_SPARSE_CORES
-                      value: "2"
+                      value: "4"
                     - name: LIBTPU_INIT_ARGS
                       value: ""
                     - name: XLA_FLAGS
                       value: ""
                     - name: TF_CPP_MIN_LOG_LEVEL
                       value: "3"
-                    - name: JAX_ENABLE_HTTP_MONITORING
-                      value: "true"
                   resources:
                     limits:
                       google.com/tpu: "4"

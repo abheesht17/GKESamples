@@ -13,21 +13,19 @@ spec:
       template:
         spec:
           backoffLimit: 0
-          completions: 4
-          parallelism: 4
+          completions: 8
+          parallelism: 8
           template:
             metadata:
               annotations:
                 gke-gcsfuse/volumes: "true"
-              labels:
-                app: "dlrm-jax-trainer"
             spec:
               hostNetwork: true
               dnsPolicy: ClusterFirstWithHostNet
               serviceAccountName: chavoshi-dlrm-job-sa
               nodeSelector:
                 cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
-                cloud.google.com/gke-tpu-topology: 4x4
+                cloud.google.com/gke-tpu-topology: 4x8
               tolerations:
                 - key: google.com/tpu
                   operator: Equal
@@ -39,7 +37,7 @@ spec:
                     driver: gcsfuse.csi.storage.gke.io
                     volumeAttributes:
                       bucketName: ${GCS_BUCKET_NAME}
-                      mountOptions: "implicit-dirs,file-cache:max-size-mb:1024,file-cache:enable-parallel-downloads:true,read_ahead_kb=1024,metadata-cache:ttl-secs:-1"
+                      mountOptions: "implicit-dirs,file-cache:max-size-mb:1048576,file-cache:enable-parallel-downloads:true,read_ahead_kb=1024,metadata-cache:ttl-secs:-1"
               containers:
                 - name: jax-dlrm
                   image: ${JAX_IMAGE_URL}
@@ -48,14 +46,12 @@ spec:
                   - containerPort: 8471
                   - containerPort: 8080
                   - containerPort: 8431
-                  - containerPort: 9001
-                  - containerPort: 9002
                   securityContext:
                     privileged: true
                   command: ["python", "/app/recml/inference/models/jax/DLRM_DCNv2/dlrm_main.py"]
                   args:
                     - --learning_rate=0.0034
-                    - --batch_size=16896
+                    - --batch_size=33792
                     - --embedding_size=128
                     - --embedding_threshold=21000
                     - --model_dir=/gcs/benchmark/model-output/${JOB_NAME}
@@ -89,11 +85,10 @@ spec:
                       value: ""
                     - name: TF_CPP_MIN_LOG_LEVEL
                       value: "3"
-                    - name: JAX_ENABLE_HTTP_MONITORING
-                      value: "true"
                   resources:
                     limits:
                       google.com/tpu: "4"
+                      # Request ephemeral storage
                       ephemeral-storage: "20Gi"
                     requests:
                       google.com/tpu: "4"

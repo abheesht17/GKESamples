@@ -13,21 +13,19 @@ spec:
       template:
         spec:
           backoffLimit: 0
-          completions: 4
-          parallelism: 4
+          completions: 32
+          parallelism: 32
           template:
             metadata:
               annotations:
                 gke-gcsfuse/volumes: "true"
-              labels:
-                app: "dlrm-jax-trainer"
             spec:
               hostNetwork: true
               dnsPolicy: ClusterFirstWithHostNet
               serviceAccountName: chavoshi-dlrm-job-sa
               nodeSelector:
-                cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
-                cloud.google.com/gke-tpu-topology: 4x4
+                cloud.google.com/gke-tpu-accelerator: tpu-v5p-slice
+                cloud.google.com/gke-tpu-topology: 4x4x8
               tolerations:
                 - key: google.com/tpu
                   operator: Equal
@@ -48,24 +46,22 @@ spec:
                   - containerPort: 8471
                   - containerPort: 8080
                   - containerPort: 8431
-                  - containerPort: 9001
-                  - containerPort: 9002
                   securityContext:
                     privileged: true
                   command: ["python", "/app/recml/inference/models/jax/DLRM_DCNv2/dlrm_main.py"]
                   args:
                     - --learning_rate=0.0034
-                    - --batch_size=16896
-                    - --embedding_size=128
+                    - --batch_size=64
+                    - --embedding_size=8
                     - --embedding_threshold=21000
                     - --model_dir=/gcs/benchmark/model-output/${JOB_NAME}
                     - --file_pattern=/gcs/mlperf-dataset/criteo_merge_balanced_4224/train-*
                     - --num_steps=28000
                     - --save_checkpoint_interval=29000
                     - --restore_checkpoint=true
-                    - --eval_interval=1500
-                    - --eval_file_pattern=/gcs/mlperf-dataset/criteo_merge_balanced_4224/train-*
-                    - --eval_steps=660
+                    # - --eval_interval=1500
+                    # - --eval_file_pattern=/gcs/mlperf-dataset/criteo_merge_balanced_4224/train-*
+                    # - --eval_steps=660
                     - --mode=train
                     - --logging_interval=1500
                     - --max_ids_per_partition=8192
@@ -82,20 +78,18 @@ spec:
                     - name: ENABLE_PJRT_COMPATIBILITY
                       value: "true"
                     - name: NUM_SPARSE_CORES
-                      value: "2"
+                      value: "4"
                     - name: LIBTPU_INIT_ARGS
                       value: ""
                     - name: XLA_FLAGS
                       value: ""
                     - name: TF_CPP_MIN_LOG_LEVEL
                       value: "3"
-                    - name: JAX_ENABLE_HTTP_MONITORING
-                      value: "true"
                   resources:
                     limits:
                       google.com/tpu: "4"
-                      ephemeral-storage: "20Gi"
+                      memory: "100Gi"
                     requests:
                       google.com/tpu: "4"
-                      ephemeral-storage: "20Gi"
+                      memory: "100Gi"
               restartPolicy: Never
