@@ -1,11 +1,11 @@
 # master image
 FROM python:3.10
 
-ENV GCS_CLIENT_CACHE_TYPE "None"
-ENV GCS_READ_CACHE_MAX_SIZE_MB "0"
-ENV GCS_READ_CACHE_BLOCK_SIZE_MB "0"
-ENV TPU_STDERR_LOG_LEVEL "0"
-ENV TF_USE_LEGACY_KERAS "1"
+ENV GCS_CLIENT_CACHE_TYPE="None"
+ENV GCS_READ_CACHE_MAX_SIZE_MB="0"
+ENV GCS_READ_CACHE_BLOCK_SIZE_MB="0"
+ENV TPU_STDERR_LOG_LEVEL="0"
+ENV TF_USE_LEGACY_KERAS="1"
 
 # Install TPU Tensorflow package
 RUN pip install \
@@ -21,11 +21,3 @@ RUN git clone https://github.com/tensorflow/recommenders.git /recommenders
 ENV PYTHONPATH "${PYTHONPATH}:/recommenders"
 RUN git clone https://github.com/ACW101/models.git /models
 ENV PYTHONPATH "${PYTHONPATH}:/models"
-
-# Overwrite the problematic ranking.py with the patched version
-COPY ranking.py /recommenders/tensorflow_recommenders/experimental/models/ranking.py
-
-# Add entrypoint.sh
-ADD entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
-ENTRYPOINT ["/entrypoint.sh"]

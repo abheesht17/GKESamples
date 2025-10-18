@@ -36,7 +36,7 @@ export GKE_LOCATION_FLAG="--zone ${CLUSTER_ZONE}"
 
 # Shared configuration
 export AR_REPO_NAME="tpu-repo"
-export IMAGE_TAG="latest"
+export IMAGE_TAG=$(date +%s)
 export MASTER_IMAGE_NAME="dlrm-master-timed"
 export WORKER_IMAGE_NAME="dlrm-worker-timed"
 
@@ -86,7 +86,7 @@ if [ "$REBUILD_FLAG" = true ]; then
     echo -e "${ORANGE}🚀 Rebuilding Docker images as requested...${NC}"
 
     echo -e "${ORANGE}Building Master image...${NC}"
-    docker build -f master.Dockerfile -t ${MASTER_IMAGE_URL} .
+    docker build --build-arg CACHE_BUSTER=${IMAGE_TAG} -f master.Dockerfile -t ${MASTER_IMAGE_URL} .
     docker push ${MASTER_IMAGE_URL}
     echo -e "${GREEN}✅ Master image pushed.${NC}"
 
