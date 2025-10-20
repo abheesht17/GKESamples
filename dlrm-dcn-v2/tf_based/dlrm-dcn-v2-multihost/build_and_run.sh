@@ -101,7 +101,7 @@ fi
 ## ------------------- TFJob Deployment & Logging ------------------- ##
 echo -e "${ORANGE}▶️  Starting process for TFJob: ${TFJOB_NAME}${NC}"
 echo -e "${ORANGE}🧹 Cleaning up any pre-existing TFJob '${TFJOB_NAME}'...${NC}"
-kubectl delete tfjob ${TFJOB_NAME} -n default --ignore-not-found=true --wait=false
+kubectl delete tfjob ${TFJOB_NAME} -n default --ignore-not-found=true --grace-period=0 --force
 
 echo -e "${ORANGE}🚢 Generating and deploying TFJob from template '${YAML_FILE}'...${NC}"
 envsubst < "${YAML_FILE}" | kubectl apply -f -

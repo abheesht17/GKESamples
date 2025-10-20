@@ -22,7 +22,7 @@ export LIBTPU_INIT_ARGS="--xla_sc_splitting_along_feature_dimension=auto  --copy
 
 # TODO: All of these flags should be a no-op on TPUv4 but we need to confirm. Most of them are related to an MLIR bridge optimization.
 # We don't currently know the details on this.
-export TF_XLA_FLAGS="--tf_mlir_enable_mlir_bridge=true --tf_xla_sparse_core_disable_table_stacking=true --tf_mlir_enable_convert_control_to_data_outputs_pass=true --tf_mlir_enable_merge_control_flow_pass=true --tf_mlir_enable_tpu_variable_runtime_reformatting_pass=false --tf_xla_disable_full_embedding_pipelining=true"
+export TF_XLA_FLAGS="--tf_mlir_enable_mlir_bridge=true --tf_xla_sparse_core_disable_table_stacking=true --tf_mlir_enable_convert_control_to_data_outputs_pass=true --tf_mlir_enable_merge_control_flow_pass=true --tf_mlir_enable_tpu_variable_runtime_reformatting_pass=false --tf_xla_disable_full_embedding_pipelining=false"
 
 # TODO GCP told us that the following two environment variables should only be used with PJRT. Since TPUv4 does not support PJRT, this will throw
 # an error on TPUv4. But we should confirm this once. If this is the case then we will have to add them in MMTP or create separate docker images

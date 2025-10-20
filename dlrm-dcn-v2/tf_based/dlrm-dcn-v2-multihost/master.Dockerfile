@@ -12,12 +12,16 @@ RUN pip install \
    --no-cache-dir \
    --upgrade \
    pip
-RUN pip install --no-cache-dir tf-keras==2.18.0 tensorflow-datasets pyyaml gin-config
-RUN pip uninstall -y tf-nightly
-RUN pip install --no-cache-dir tensorflow-tpu==2.19.0rc0 -f https://storage.googleapis.com/libtpu-tf-releases/index.html --force
+RUN pip install --no-cache-dir tf-keras tensorflow-datasets pyyaml gin-config tensorflow-tpu==2.19.1 -f https://storage.googleapis.com/libtpu-tf-releases/index.html --force
 
-# Clone TFRS to a dir
-RUN git clone https://github.com/tensorflow/recommenders.git /recommenders
+# Clone TFRS to a dir and check out the specific working commit
+RUN git clone https://github.com/tensorflow/recommenders.git /recommenders && \
+    cd /recommenders && \
+    git checkout b639fe3a15ce00acf765a005c78fe264d2df7931
 ENV PYTHONPATH "${PYTHONPATH}:/recommenders"
-RUN git clone https://github.com/ACW101/models.git /models
+
+# Clone models to a dir and check out the specific working commit
+RUN git clone https://github.com/ACW101/models.git /models && \
+    cd /models && \
+    git checkout 92cd14dfe3ff119f5c979d331768632784b448dc
 ENV PYTHONPATH "${PYTHONPATH}:/models"

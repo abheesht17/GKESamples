@@ -39,7 +39,7 @@ spec:
                   TF_USE_LEGACY_KERAS=1 TPU_LOAD_LIBRARY=0 TF_XLA_FLAGS="--tf_mlir_enable_mlir_bridge=true \
                   --tf_xla_sparse_core_disable_table_stacking=true \
                   --tf_mlir_enable_convert_control_to_data_outputs_pass=true \
-                  --tf_mlir_enable_merge_control_flow_pass=true" python3 /models/official/recommendation/ranking/train.py  --mode=train     --model_dir="/gcs/v6e_16/" --params_override="
+                  --tf_mlir_enable_merge_control_flow_pass=true" python3 /models/official/recommendation/ranking/train.py  --mode=train     --model_dir="/gcs/v6e_16_r3/" --params_override="
                   runtime:
                     distribution_strategy: tpu
                     mixed_precision_dtype: 'mixed_bfloat16'
@@ -48,11 +48,11 @@ spec:
                     use_synthetic_data: false
                     use_tf_record_reader: true
                     train_data:
-                      input_path: 'gs://trillium-datasets/criteo/train/day_*/*'
+                      input_path: '/gcs/tb_tf_record_train_val/tb_tf_record_train_val/train/day_*/*'
                       global_batch_size: 16384
                       use_cached_data: true
                     validation_data:
-                      input_path: 'gs://trillium-datasets/criteo/eval/day_*/*'
+                      input_path: '/gcs/tb_tf_record_train_val/tb_tf_record_train_val/eval/day_*/*'
                       global_batch_size: 16384
                       use_cached_data: true
                     model:
