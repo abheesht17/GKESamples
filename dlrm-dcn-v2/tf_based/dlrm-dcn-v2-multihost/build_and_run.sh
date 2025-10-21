@@ -36,7 +36,7 @@ export GKE_LOCATION_FLAG="--zone ${CLUSTER_ZONE}"
 
 # Shared configuration
 export AR_REPO_NAME="tpu-repo"
-export IMAGE_TAG=$(date +%s)
+export IMAGE_TAG=$(date +%H)
 export MASTER_IMAGE_NAME="dlrm-master-timed"
 export WORKER_IMAGE_NAME="dlrm-worker-timed"
 
