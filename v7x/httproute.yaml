@@ -1,0 +1,16 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: tpu-inference-route
+spec:
+  parentRefs:
+  - name: internal-gateway
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /tpu
+    backendRefs:
+    - name: vllm-tpu-inferencepool
+      group: "inference.networking.k8s.io"
+      kind: InferencePool
