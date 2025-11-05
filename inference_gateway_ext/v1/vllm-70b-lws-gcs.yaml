@@ -1,0 +1,96 @@
+apiVersion: leaderworkerset.x-k8s.io/v1
+kind: LeaderWorkerSet
+metadata:
+  name: vllm-70b
+spec:
+  replicas: 1
+  leaderWorkerTemplate:
+    size: 2
+    restartPolicy: RecreateGroupOnPodRestart
+    leaderTemplate:
+      metadata:
+        labels:
+          role: leader
+        annotations:
+          gke-gcsfuse/volumes: "true"
+      spec:
+        serviceAccountName: vllm-tpu-ksa
+        nodeSelector:
+          cloud.google.com/gke-nodepool: gpu-nodepool
+        containers:
+        - name: vllm-leader
+          image: vllm/vllm-openai:latest
+          env:
+          - name: HUGGING_FACE_HUB_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+          command:
+          - sh
+          - -c
+          - "bash /vllm-workspace/examples/online_serving/multi-node-serving.sh leader --ray_cluster_size=$(LWS_GROUP_SIZE); \             python3 -m vllm.entrypoints.openai.api_server --port 8080 --model /data/lama3model-bucket/Llama-3.1-70B-Instruct --tensor-parallel-size 8 --pipeline-parallel-size 2 --trust-remote-code --max-model-len 4096"
+          resources:
+            limits:
+              nvidia.com/gpu: "8"
+          ports:
+          - containerPort: 8080
+          readinessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          volumeMounts:
+          - mountPath: /dev/shm
+            name: dshm
+          - name: gcs-fuse-csi-ephemeral
+            mountPath: /data
+        volumes:
+        - name: dshm
+          emptyDir:
+            medium: Memory
+        - name: gcs-fuse-csi-ephemeral
+          csi:
+            driver: gcsfuse.csi.storage.gke.io
+            volumeAttributes:
+              bucketName: tpu-model-cache-1761674247
+              mountOptions: "implicit-dirs,file-cache:enable-parallel-downloads:true,file-cache:parallel-downloads-per-file:100,file-cache:max-parallel-downloads:-1,file-cache:download-chunk-size-mb:10,file-cache:max-size-mb:-1"
+    workerTemplate:
+      metadata:
+        annotations:
+          gke-gcsfuse/volumes: "true"
+      spec:
+        serviceAccountName: vllm-tpu-ksa
+        nodeSelector:
+          cloud.google.com/gke-nodepool: gpu-nodepool
+        containers:
+        - name: vllm-worker
+          image: vllm/vllm-openai:latest
+          command:
+          - sh
+          - -c
+          - "bash /vllm-workspace/examples/online_serving/multi-node-serving.sh worker --ray_address=$(LWS_LEADER_ADDRESS)"
+          resources:
+            limits:
+              nvidia.com/gpu: "8"
+          env:
+          - name: HUGGING_FACE_HUB_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+          volumeMounts:
+          - mountPath: /dev/shm
+            name: dshm
+          - name: gcs-fuse-csi-ephemeral
+            mountPath: /data
+        volumes:
+        - name: dshm
+          emptyDir:
+            medium: Memory
+        - name: gcs-fuse-csi-ephemeral
+          csi:
+            driver: gcsfuse.csi.storage.gke.io
+            volumeAttributes:
+              bucketName: tpu-model-cache-1761674247
+              mountOptions: "implicit-dirs,file-cache:enable-parallel-downloads:true,file-cache:parallel-downloads-per-file:100,file-cache:max-parallel-downloads:-1,file-cache:download-chunk-size-mb:10,file-cache:max-size-mb:-1"
