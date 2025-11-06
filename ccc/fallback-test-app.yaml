@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fallback-test-app
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: fallback-test
+  template:
+    metadata:
+      labels:
+        app: fallback-test
+    spec:
+      nodeSelector:
+        cloud.google.com/compute-class: cpu-fallback-test
+      tolerations:
+      - key: "cloud.google.com/compute-class"
+        operator: "Exists"
+        effect: "NoSchedule"
+      containers:
+      - name: nginx
+        image: nginx
+        resources:
+          requests:
+            cpu: "100m"
