@@ -35,8 +35,8 @@ import jax.numpy as jnp
 import jax.profiler
 from jax.sharding import NamedSharding
 from jax.sharding import PartitionSpec as P
-from jax_tpu_embedding.sparsecore.lib.flax import embed
-from jax_tpu_embedding.sparsecore.lib.flax import embed_optimizer
+from jax_tpu_embedding.sparsecore.lib.flax.linen import embed
+from jax_tpu_embedding.sparsecore.lib.flax.linen import embed_optimizer
 from jax_tpu_embedding.sparsecore.lib.nn import embedding
 from jax_tpu_embedding.sparsecore.lib.nn import embedding_spec
 import metrax
