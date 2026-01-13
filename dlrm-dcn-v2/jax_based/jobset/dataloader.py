@@ -254,9 +254,11 @@ class CriteoDataLoader:
 
     # Parse examples
     dataset = dataset.map(
-        lambda x: self._parse_example(x, batch_size),
+        lambda x: self._parse_example(x, file_batch_size),
         num_parallel_calls=parallelism,
     )
+    dataset = dataset.unbatch()
+    dataset = dataset.batch(batch_size, drop_remainder=True)
 
     if self._params.is_training and self._shuffle_buffer > 0:
       dataset = dataset.shuffle(self._shuffle_buffer)
