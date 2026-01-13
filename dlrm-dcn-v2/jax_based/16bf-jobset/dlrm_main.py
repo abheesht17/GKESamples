@@ -49,7 +49,7 @@ jax.distributed.initialize()
 jax.profiler.start_server(9999)
 partial = functools.partial
 info = logging.info
-shard_map = jax.experimental.shard_map.shard_map
+shard_map = jax.shard_map
 Nested = embedding.Nested
 
 FLAGS = flags.FLAGS

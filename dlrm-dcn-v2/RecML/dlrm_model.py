@@ -23,7 +23,7 @@ from jax_tpu_embedding.sparsecore.lib.nn import embedding
 from jax_tpu_embedding.sparsecore.lib.nn import embedding_spec
 
 
-shard_map = jax.experimental.shard_map.shard_map
+shard_map = jax.shard_map
 Nested = embedding.Nested
 
 
