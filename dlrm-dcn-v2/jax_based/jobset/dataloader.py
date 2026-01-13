@@ -252,6 +252,8 @@ class CriteoDataLoader:
         dataset, buffer_size=32 * 1024 * 1024, num_parallel_reads=parallelism
     )
 
+    file_batch_size = 4224
+
     # Parse examples
     dataset = dataset.map(
         lambda x: self._parse_example(x, file_batch_size),
